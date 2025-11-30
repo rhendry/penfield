@@ -57,11 +57,7 @@ export async function setupVite(app: Express, server: Server) {
             );
 
             // always read fresh template in dev
-            let template = fs.readFileSync(clientTemplate, "utf-8");
-            template = template.replace(
-                `src="/src/main.tsx"`,
-                `src="/src/main.tsx?v=${Math.random()}"`,
-            );
+            const template = fs.readFileSync(clientTemplate, "utf-8");
             const page = await vite.transformIndexHtml(url, template);
             res.status(200).set({ "Content-Type": "text/html" }).end(page);
         } catch (e) {
