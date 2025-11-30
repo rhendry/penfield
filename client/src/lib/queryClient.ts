@@ -1,6 +1,6 @@
-import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import { QueryClient } from "@tanstack/react-query";
 
-async function apiRequest(
+export async function apiRequest(
     method: string,
     url: string,
     data?: unknown | undefined,
@@ -16,7 +16,7 @@ async function apiRequest(
     if (!res.ok) {
         const json = await res.json();
         if (res.status === 401) {
-            throw new Error("Unauthorized");
+            throw new Error("Invalid username or password");
         }
         throw new Error(json.message || res.statusText);
     }
@@ -24,20 +24,15 @@ async function apiRequest(
     return res;
 }
 
+export async function getQueryClient({ queryKey }: { queryKey: readonly unknown[] }) {
+    const res = await apiRequest("GET", queryKey[0] as string);
+    return res.json();
+}
+
 export const queryClient = new QueryClient({
     defaultOptions: {
         queries: {
-            queryFn: async ({ queryKey }) => {
-                const res = await apiRequest("GET", queryKey[0] as string);
-                return res.json();
-            },
-        },
-        mutations: {
-            mutationFn: async ({ mutationKey, variables }) => {
-                const [method, url] = mutationKey as [string, string];
-                const res = await apiRequest(method, url, variables);
-                return res.json();
-            },
+            queryFn: getQueryClient,
         },
     },
 });

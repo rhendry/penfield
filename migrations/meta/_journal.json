@@ -8,6 +8,13 @@
       "when": 1764464448837,
       "tag": "0000_slim_black_knight",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1764480490668,
+      "tag": "0001_black_bloodstorm",
+      "breakpoints": true
     }
   ]
 }
