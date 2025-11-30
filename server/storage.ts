@@ -1,4 +1,4 @@
-import { users, type User, type InsertUser } from "@shared/schema";
+import { users, type User, type InsertUser, projects, type Project, type InsertProject, assets, type Asset, type InsertAsset } from "@shared/schema";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
 import session from "express-session";
@@ -7,11 +7,22 @@ import createMemoryStore from "memorystore";
 const MemoryStore = createMemoryStore(session);
 
 export interface IStorage {
+    sessionStore: session.Store;
     getUser(id: number): Promise<User | undefined>;
     getUserByUsername(username: string): Promise<User | undefined>;
     createUser(user: InsertUser): Promise<User>;
     updateUser(id: number, user: Partial<User>): Promise<User>;
-    sessionStore: session.Store;
+
+    // Projects
+    getProjects(userId: number): Promise<Project[]>;
+    getProject(id: number): Promise<Project | undefined>;
+    createProject(userId: number, project: InsertProject): Promise<Project>;
+
+    // Assets
+    getAssets(projectId: number): Promise<Asset[]>;
+    getAsset(id: number): Promise<Asset | undefined>;
+    createAsset(asset: InsertAsset): Promise<Asset>;
+    updateAsset(id: number, content: unknown): Promise<Asset>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -38,13 +49,53 @@ export class DatabaseStorage implements IStorage {
         return user;
     }
 
-    async updateUser(id: number, user: Partial<User>): Promise<User> {
-        const [updatedUser] = await db
+    async updateUser(id: number, userUpdate: Partial<User>): Promise<User> {
+        const [user] = await db
             .update(users)
-            .set(user)
+            .set(userUpdate)
             .where(eq(users.id, id))
             .returning();
-        return updatedUser;
+        return user;
+    }
+
+    async getProjects(userId: number): Promise<Project[]> {
+        return await db.select().from(projects).where(eq(projects.userId, userId));
+    }
+
+    async getProject(id: number): Promise<Project | undefined> {
+        const [project] = await db.select().from(projects).where(eq(projects.id, id));
+        return project;
+    }
+
+    async createProject(userId: number, insertProject: InsertProject): Promise<Project> {
+        const [project] = await db
+            .insert(projects)
+            .values({ ...insertProject, userId })
+            .returning();
+        return project;
+    }
+
+    async getAssets(projectId: number): Promise<Asset[]> {
+        return await db.select().from(assets).where(eq(assets.projectId, projectId));
+    }
+
+    async getAsset(id: number): Promise<Asset | undefined> {
+        const [asset] = await db.select().from(assets).where(eq(assets.id, id));
+        return asset;
+    }
+
+    async createAsset(insertAsset: InsertAsset): Promise<Asset> {
+        const [asset] = await db.insert(assets).values(insertAsset).returning();
+        return asset;
+    }
+
+    async updateAsset(id: number, content: unknown): Promise<Asset> {
+        const [asset] = await db
+            .update(assets)
+            .set({ content, updatedAt: new Date() })
+            .where(eq(assets.id, id))
+            .returning();
+        return asset;
     }
 }
 

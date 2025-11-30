@@ -8,7 +8,10 @@ async function seedAdmin() {
 
     const existing = await storage.getUserByUsername(username);
     if (existing) {
-        console.log("Admin user already exists");
+        console.log("Admin user already exists, updating password...");
+        const hashedPassword = await hashPassword(password);
+        await storage.updateUser(existing.id, { password: hashedPassword });
+        console.log("Admin password updated to: admin123");
         process.exit(0);
     }
 
