@@ -33,6 +33,7 @@
     "include": [
         "client/src",
         "shared",
-        "server"
+        "server",
+        "stories"
     ]
 }
