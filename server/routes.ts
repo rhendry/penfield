@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { hashPassword, comparePasswords } from "./auth";
 import { insertUserSchema, insertProjectSchema, insertAssetSchema } from "@shared/schema";
+import { registerToolkitRoutes } from "./toolkit-routes";
 
 export async function registerRoutes(app: Express): Promise<Server> {
     // Auth Routes
@@ -193,6 +194,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const updatedAsset = await storage.updateAsset(id, req.body.content);
         res.json(updatedAsset);
     });
+
+    // Toolkit Routes
+    registerToolkitRoutes(app);
 
     const httpServer = createServer(app);
     return httpServer;

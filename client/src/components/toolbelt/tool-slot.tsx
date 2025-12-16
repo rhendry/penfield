@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import { ToolSlotProps } from "./types";
 import { motion } from "framer-motion";
+import { IconWithBadge } from "../toolkit/icon-with-badge";
 
 export function ToolSlot({
     hotkey,
@@ -35,12 +36,29 @@ export function ToolSlot({
             {/* Tool Icon */}
             {tool ? (
                 <div className="flex flex-col items-center gap-1">
-                    <tool.icon
-                        className={cn(
-                            "w-6 h-6 transition-colors",
-                            isActive ? "text-primary" : "text-foreground group-hover:text-primary/80"
-                        )}
-                    />
+                    {tool.iconType && tool.iconName ? (
+                        <IconWithBadge
+                            iconType={tool.iconType}
+                            iconName={tool.iconName}
+                            badgeType={tool.badgeType}
+                            badgeName={tool.badgeName}
+                            badgeAlignment={tool.badgeAlignment}
+                            size={24}
+                            className={cn(
+                                "transition-colors",
+                                isActive ? "text-primary" : "text-foreground group-hover:text-primary/80"
+                            )}
+                        />
+                    ) : tool.icon ? (
+                        <tool.icon
+                            className={cn(
+                                "w-6 h-6 transition-colors",
+                                isActive ? "text-primary" : "text-foreground group-hover:text-primary/80"
+                            )}
+                        />
+                    ) : (
+                        <div className="w-6 h-6 rounded-full border-2 border-dashed border-muted-foreground/20" />
+                    )}
                     <span className="text-[10px] font-medium opacity-0 group-hover:opacity-100 transition-opacity absolute -bottom-4 whitespace-nowrap bg-black/80 px-2 py-0.5 rounded text-white pointer-events-none">
                         {tool.name}
                     </span>

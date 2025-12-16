@@ -1,6 +1,28 @@
-import { users, type User, type InsertUser, projects, type Project, type InsertProject, assets, type Asset, type InsertAsset } from "@shared/schema";
+import {
+    users,
+    type User,
+    type InsertUser,
+    projects,
+    type Project,
+    type InsertProject,
+    assets,
+    type Asset,
+    type InsertAsset,
+    toolkits,
+    type Toolkit,
+    type InsertToolkit,
+    tools,
+    type Tool,
+    type InsertTool,
+    toolbelts,
+    type Toolbelt,
+    type InsertToolbelt,
+    quickSelectSlots,
+    type QuickSelectSlot,
+    type InsertQuickSelectSlot,
+} from "@shared/schema";
 import { db } from "./db";
-import { eq } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import session from "express-session";
 import createMemoryStore from "memorystore";
 
@@ -23,6 +45,28 @@ export interface IStorage {
     getAsset(id: number): Promise<Asset | undefined>;
     createAsset(asset: InsertAsset): Promise<Asset>;
     updateAsset(id: number, content: unknown): Promise<Asset>;
+
+    // Toolkits
+    getToolkits_async(editorType?: string): Promise<Toolkit[]>;
+    getToolkit_async(id: number): Promise<Toolkit | undefined>;
+
+    // Tools
+    getTools_async(toolkitId?: number): Promise<Tool[]>;
+    getTool_async(id: number): Promise<Tool | undefined>;
+    getToolsByToolkit_async(toolkitId: number): Promise<Tool[]>;
+
+    // Toolbelts
+    getToolbelts_async(userId: number): Promise<Toolbelt[]>;
+    getToolbelt_async(id: number): Promise<Toolbelt | undefined>;
+    createToolbelt_async(userId: number, toolbelt: InsertToolbelt): Promise<Toolbelt>;
+    updateToolbelt_async(id: number, toolbelt: Partial<InsertToolbelt>): Promise<Toolbelt>;
+    deleteToolbelt_async(id: number): Promise<void>;
+
+    // Quick Select Slots
+    getQuickSelectSlots_async(userId: number): Promise<QuickSelectSlot[]>;
+    addQuickSelectSlot_async(userId: number, slot: InsertQuickSelectSlot): Promise<QuickSelectSlot>;
+    removeQuickSelectSlot_async(id: number): Promise<void>;
+    updateQuickSelectSlotPosition_async(id: number, position: number): Promise<QuickSelectSlot>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -96,6 +140,128 @@ export class DatabaseStorage implements IStorage {
             .where(eq(assets.id, id))
             .returning();
         return asset;
+    }
+
+    // Toolkits
+    async getToolkits_async(editorType?: string): Promise<Toolkit[]> {
+        if (editorType) {
+            return await db
+                .select()
+                .from(toolkits)
+                .where(eq(toolkits.editorType, editorType));
+        }
+        return await db.select().from(toolkits);
+    }
+
+    async getToolkit_async(id: number): Promise<Toolkit | undefined> {
+        const [toolkit] = await db.select().from(toolkits).where(eq(toolkits.id, id));
+        return toolkit;
+    }
+
+    // Tools
+    async getTools_async(toolkitId?: number): Promise<Tool[]> {
+        if (toolkitId) {
+            return await db.select().from(tools).where(eq(tools.toolkitId, toolkitId));
+        }
+        return await db.select().from(tools);
+    }
+
+    async getTool_async(id: number): Promise<Tool | undefined> {
+        const [tool] = await db.select().from(tools).where(eq(tools.id, id));
+        return tool;
+    }
+
+    async getToolsByToolkit_async(toolkitId: number): Promise<Tool[]> {
+        return await db.select().from(tools).where(eq(tools.toolkitId, toolkitId));
+    }
+
+    // Toolbelts
+    async getToolbelts_async(userId: number): Promise<Toolbelt[]> {
+        return await db
+            .select()
+            .from(toolbelts)
+            .where(eq(toolbelts.userId, userId))
+            .orderBy(desc(toolbelts.updatedAt));
+    }
+
+    async getToolbelt_async(id: number): Promise<Toolbelt | undefined> {
+        const [toolbelt] = await db.select().from(toolbelts).where(eq(toolbelts.id, id));
+        return toolbelt;
+    }
+
+    async createToolbelt_async(userId: number, insertToolbelt: InsertToolbelt): Promise<Toolbelt> {
+        const [toolbelt] = await db
+            .insert(toolbelts)
+            .values({ ...insertToolbelt, userId })
+            .returning();
+        return toolbelt;
+    }
+
+    async updateToolbelt_async(id: number, toolbeltUpdate: Partial<InsertToolbelt>): Promise<Toolbelt> {
+        const [toolbelt] = await db
+            .update(toolbelts)
+            .set({ ...toolbeltUpdate, updatedAt: new Date() })
+            .where(eq(toolbelts.id, id))
+            .returning();
+        return toolbelt;
+    }
+
+    async deleteToolbelt_async(id: number): Promise<void> {
+        await db.delete(toolbelts).where(eq(toolbelts.id, id));
+    }
+
+    // Quick Select Slots
+    async getQuickSelectSlots_async(userId: number): Promise<QuickSelectSlot[]> {
+        return await db
+            .select()
+            .from(quickSelectSlots)
+            .where(eq(quickSelectSlots.userId, userId))
+            .orderBy(quickSelectSlots.position);
+    }
+
+    async addQuickSelectSlot_async(userId: number, insertSlot: InsertQuickSelectSlot): Promise<QuickSelectSlot> {
+        // Check if position is already taken
+        const existingSlots = await this.getQuickSelectSlots_async(userId);
+        const maxPosition = Math.max(...existingSlots.map((s) => s.position), -1);
+
+        // If adding to a full quick-select (5 slots), use LRU policy
+        if (existingSlots.length >= 5) {
+            // Find the least recently used slot (oldest lastUsedAt)
+            const lruSlot = existingSlots.reduce((oldest, current) =>
+                current.lastUsedAt < oldest.lastUsedAt ? current : oldest
+            );
+            // Update the LRU slot with new tool
+            const [updatedSlot] = await db
+                .update(quickSelectSlots)
+                .set({
+                    toolId: insertSlot.toolId,
+                    lastUsedAt: new Date(),
+                })
+                .where(eq(quickSelectSlots.id, lruSlot.id))
+                .returning();
+            return updatedSlot;
+        }
+
+        // Otherwise, add to the next available position
+        const position = insertSlot.position ?? maxPosition + 1;
+        const [slot] = await db
+            .insert(quickSelectSlots)
+            .values({ ...insertSlot, userId, position })
+            .returning();
+        return slot;
+    }
+
+    async removeQuickSelectSlot_async(id: number): Promise<void> {
+        await db.delete(quickSelectSlots).where(eq(quickSelectSlots.id, id));
+    }
+
+    async updateQuickSelectSlotPosition_async(id: number, position: number): Promise<QuickSelectSlot> {
+        const [slot] = await db
+            .update(quickSelectSlots)
+            .set({ position, lastUsedAt: new Date() })
+            .where(eq(quickSelectSlots.id, id))
+            .returning();
+        return slot;
     }
 }
 

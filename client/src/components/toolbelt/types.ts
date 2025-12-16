@@ -3,7 +3,15 @@ import { LucideIcon } from "lucide-react";
 export interface Tool {
     id: string;
     name: string;
-    icon: LucideIcon;
+    // Legacy support: icon can be a LucideIcon component (for backward compatibility)
+    icon?: LucideIcon;
+    // New icon system: iconType and iconName
+    iconType?: "lucide" | "custom";
+    iconName?: string;
+    // Badge support
+    badgeType?: "lucide" | "custom";
+    badgeName?: string;
+    badgeAlignment?: "top-right" | "top-left" | "bottom-right" | "bottom-left" | "center";
     description?: string;
     hotkey?: string;
 }
@@ -43,4 +51,12 @@ export interface ToolbeltProps {
 
 export interface ToolSlotProps extends ToolbeltSlot {
     onClick: () => void;
+}
+
+export interface QuickSelectSlot {
+    id: string;
+    tool: Tool;
+    position: number; // 0-4
+    lastUsedAt?: Date;
+    isActive?: boolean;
 }
