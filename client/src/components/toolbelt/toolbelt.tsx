@@ -1,27 +1,67 @@
-import { ToolbeltProps } from "./types";
+import { ToolbeltProps, ToolbeltConfig } from "./types";
 import { ToolSlot } from "./tool-slot";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useKeyboardHotkeys } from "@/hooks/use-keyboard-hotkeys";
 
-// Group slots by keyboard row based on hotkey
-function groupSlotsByRow(slots: ToolbeltProps["slots"]) {
-    const row1: typeof slots = []; // 1, 2, 3, 4
-    const row2: typeof slots = []; // Q, W, E, R
-    const row3: typeof slots = []; // A, S, D, F
+// Keyboard row mappings
+const KEYBOARD_ROWS = [
+    ["1", "2", "3", "4", "5", "6", "7"], // Row 1: Numbers
+    ["Q", "W", "E", "R", "T", "Y", "U"], // Row 2: Q row
+    ["A", "S", "D", "F", "G", "H", "J"], // Row 3: A row
+    ["Z", "X", "C", "V", "B", "N", "M"], // Row 4: Z row
+];
 
+// Row offsets for keyboard-like staggered layout
+const ROW_OFFSETS = ["ml-0", "ml-8", "ml-16", "ml-24"];
+
+/**
+ * Group slots by keyboard row based on hotkey and configuration
+ */
+function groupSlotsByRow(
+    slots: ToolbeltProps["slots"],
+    config: Required<ToolbeltConfig>
+) {
+    const rows: Array<typeof slots> = [];
+    
+    // Initialize rows based on config
+    for (let i = 0; i < config.rows; i++) {
+        rows.push([]);
+    }
+
+    // Get the valid keys for each row based on config
+    const validKeysPerRow = KEYBOARD_ROWS.slice(0, config.rows).map((row) =>
+        row.slice(0, config.cols)
+    );
+
+    // Group slots by their hotkey
     slots.forEach((slot) => {
         const key = slot.hotkey.toUpperCase();
-        if (["1", "2", "3", "4"].includes(key)) {
-            row1.push(slot);
-        } else if (["Q", "W", "E", "R"].includes(key)) {
-            row2.push(slot);
-        } else if (["A", "S", "D", "F"].includes(key)) {
-            row3.push(slot);
+        for (let rowIndex = 0; rowIndex < validKeysPerRow.length; rowIndex++) {
+            if (validKeysPerRow[rowIndex].includes(key)) {
+                rows[rowIndex].push(slot);
+                break;
+            }
         }
     });
 
-    return { row1, row2, row3 };
+    // Sort each row by hotkey order
+    rows.forEach((row) => {
+        row.sort((a, b) => {
+            const aKey = a.hotkey.toUpperCase();
+            const bKey = b.hotkey.toUpperCase();
+            const aRowIndex = validKeysPerRow.findIndex((keys) => keys.includes(aKey));
+            const bRowIndex = validKeysPerRow.findIndex((keys) => keys.includes(bKey));
+            
+            if (aRowIndex !== bRowIndex) return aRowIndex - bRowIndex;
+            
+            const aKeyIndex = validKeysPerRow[aRowIndex].indexOf(aKey);
+            const bKeyIndex = validKeysPerRow[bRowIndex].indexOf(bKey);
+            return aKeyIndex - bKeyIndex;
+        });
+    });
+
+    return rows;
 }
 
 export function Toolbelt({
@@ -29,8 +69,15 @@ export function Toolbelt({
     onSlotClick,
     className,
     keyboardEnabled = true,
+    config = { rows: 3, cols: 4 },
 }: ToolbeltProps) {
-    const { row1, row2, row3 } = groupSlotsByRow(slots);
+    // Clamp config values to valid ranges
+    const normalizedConfig: Required<ToolbeltConfig> = {
+        rows: Math.max(1, Math.min(4, config.rows ?? 3)),
+        cols: Math.max(1, Math.min(7, config.cols ?? 4)),
+    };
+
+    const rows = groupSlotsByRow(slots, normalizedConfig);
     
     useKeyboardHotkeys({
         enabled: keyboardEnabled,
@@ -49,38 +96,20 @@ export function Toolbelt({
                 className
             )}
         >
-            {/* Row 1: 1, 2, 3, 4 - No offset */}
-            <div className="flex gap-3">
-                {row1.map((slot) => (
-                    <ToolSlot
-                        key={slot.id}
-                        {...slot}
-                        onClick={() => onSlotClick(slot.id)}
-                    />
-                ))}
-            </div>
-
-            {/* Row 2: Q, W, E, R - Indented by half slot width */}
-            <div className="flex gap-3 ml-8">
-                {row2.map((slot) => (
-                    <ToolSlot
-                        key={slot.id}
-                        {...slot}
-                        onClick={() => onSlotClick(slot.id)}
-                    />
-                ))}
-            </div>
-
-            {/* Row 3: A, S, D, F - Indented by full slot width */}
-            <div className="flex gap-3 ml-16">
-                {row3.map((slot) => (
-                    <ToolSlot
-                        key={slot.id}
-                        {...slot}
-                        onClick={() => onSlotClick(slot.id)}
-                    />
-                ))}
-            </div>
+            {rows.map((row, rowIndex) => (
+                <div
+                    key={rowIndex}
+                    className={cn("flex gap-3", ROW_OFFSETS[rowIndex])}
+                >
+                    {row.map((slot) => (
+                        <ToolSlot
+                            key={slot.id}
+                            {...slot}
+                            onClick={() => onSlotClick(slot.id)}
+                        />
+                    ))}
+                </div>
+            ))}
         </motion.div>
     );
 }

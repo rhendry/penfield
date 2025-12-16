@@ -15,6 +15,17 @@ export interface ToolbeltSlot {
     isActive?: boolean;
 }
 
+export interface ToolbeltConfig {
+    /**
+     * Number of rows (1-4). Defaults to 3.
+     */
+    rows?: number;
+    /**
+     * Number of columns per row (1-7). Defaults to 4.
+     */
+    cols?: number;
+}
+
 export interface ToolbeltProps {
     slots: ToolbeltSlot[];
     onSlotClick: (slotId: string) => void;
@@ -24,6 +35,10 @@ export interface ToolbeltProps {
      * When false, keyboard input will not be captured.
      */
     keyboardEnabled?: boolean;
+    /**
+     * Configuration for toolbelt layout. Defaults to 3 rows, 4 cols.
+     */
+    config?: ToolbeltConfig;
 }
 
 export interface ToolSlotProps extends ToolbeltSlot {
