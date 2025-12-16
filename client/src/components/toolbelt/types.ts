@@ -19,6 +19,11 @@ export interface ToolbeltProps {
     slots: ToolbeltSlot[];
     onSlotClick: (slotId: string) => void;
     className?: string;
+    /**
+     * Whether keyboard hotkeys are enabled. Defaults to true.
+     * When false, keyboard input will not be captured.
+     */
+    keyboardEnabled?: boolean;
 }
 
 export interface ToolSlotProps extends ToolbeltSlot {
