@@ -15,10 +15,15 @@ export function ToolSlot({
             onClick={onClick}
             className={cn(
                 "relative group flex flex-col items-center justify-center w-16 h-16 rounded-xl border transition-all duration-200",
-                "bg-background/40 backdrop-blur-md shadow-lg",
+                "backdrop-blur-md shadow-lg",
+                tool || isActive
+                    ? "bg-background border-white/20"
+                    : "bg-background/40 border-white/10",
                 isActive
-                    ? "border-primary bg-primary/20 shadow-[0_0_15px_rgba(var(--primary),0.3)]"
-                    : "border-white/10 hover:border-white/20 hover:bg-white/5"
+                    ? "border-primary shadow-[0_0_15px_rgba(var(--primary),0.3)]"
+                    : tool
+                    ? "hover:border-white/30 hover:bg-background/95"
+                    : "hover:border-white/20 hover:bg-white/5"
             )}
         >
             {/* Hotkey Indicator */}
