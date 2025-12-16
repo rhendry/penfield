@@ -10,9 +10,10 @@ export function ToolSlot({
 }: ToolSlotProps) {
     return (
         <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={onClick}
+            whileHover={tool ? { scale: 1.05 } : {}}
+            whileTap={tool ? { scale: 0.95 } : {}}
+            onClick={tool ? onClick : undefined}
+            disabled={!tool}
             className={cn(
                 "relative group flex flex-col items-center justify-center w-16 h-16 rounded-xl border transition-all duration-200",
                 "backdrop-blur-md shadow-lg",
@@ -22,8 +23,8 @@ export function ToolSlot({
                 isActive
                     ? "border-primary shadow-[0_0_15px_rgba(var(--primary),0.3)]"
                     : tool
-                    ? "hover:border-white/30 hover:bg-background/95"
-                    : "hover:border-white/20 hover:bg-white/5"
+                        ? "hover:border-white/30 hover:bg-background/95 cursor-pointer"
+                        : "cursor-not-allowed opacity-60"
             )}
         >
             {/* Hotkey Indicator */}

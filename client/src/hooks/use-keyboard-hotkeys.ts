@@ -2,7 +2,7 @@ import { useEffect, useCallback } from "react";
 
 export interface UseKeyboardHotkeysOptions {
     enabled?: boolean;
-    slots: Array<{ id: string; hotkey: string }>;
+    slots: Array<{ id: string; hotkey: string; tool?: unknown }>;
     onHotkeyPress: (slotId: string) => void;
 }
 
@@ -34,11 +34,11 @@ export function useKeyboardHotkeys({
                 (slot) => slot.hotkey.toUpperCase() === pressedKey
             );
 
-            if (matchingSlot) {
+            if (matchingSlot && matchingSlot.tool) {
                 event.preventDefault();
                 event.stopPropagation();
                 
-                // Call the handler immediately - never drop inputs
+                // Only call handler if slot has an assigned tool
                 onHotkeyPress(matchingSlot.id);
             }
         },
