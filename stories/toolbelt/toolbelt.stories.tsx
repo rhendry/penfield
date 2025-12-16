@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { Toolbelt } from "../../client/src/components/toolbelt/toolbelt";
+import { ToolbeltHelp } from "../../client/src/components/toolbelt/toolbelt-help";
 import { Pencil, Eraser, MousePointer2, PaintBucket, Move } from "lucide-react";
 import { fn, expect, userEvent, within } from "storybook/test";
 import { useState } from "react";
@@ -20,11 +21,36 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 const tools = [
-    { id: "select", name: "Select", icon: MousePointer2 },
-    { id: "move", name: "Move", icon: Move },
-    { id: "pencil", name: "Pencil", icon: Pencil },
-    { id: "eraser", name: "Eraser", icon: Eraser },
-    { id: "fill", name: "Fill", icon: PaintBucket },
+    {
+        id: "select",
+        name: "Select",
+        icon: MousePointer2,
+        description: "Select and move objects on the canvas. Click and drag to create selection boxes.",
+    },
+    {
+        id: "move",
+        name: "Move",
+        icon: Move,
+        description: "Move selected objects around the canvas. Use arrow keys for precise positioning.",
+    },
+    {
+        id: "pencil",
+        name: "Pencil",
+        icon: Pencil,
+        description: "Draw freehand strokes on the canvas. Hold Shift for straight lines. Right-click to erase.",
+    },
+    {
+        id: "eraser",
+        name: "Eraser",
+        icon: Eraser,
+        description: "Erase pixels from the canvas. Adjust brush size with bracket keys [ and ].",
+    },
+    {
+        id: "fill",
+        name: "Fill",
+        icon: PaintBucket,
+        description: "Fill connected areas with the selected color. Right-click to fill with background color.",
+    },
 ];
 
 const slots = [
@@ -54,6 +80,7 @@ function InteractiveToolbelt({
     config?: { rows?: number; cols?: number };
 }) {
     const [slotsState, setSlotsState] = useState(initialSlots);
+    const [helpVisible, setHelpVisible] = useState(true);
 
     const handleSlotClick = (slotId: string) => {
         setSlotsState((prev) =>
@@ -65,12 +92,19 @@ function InteractiveToolbelt({
     };
 
     return (
-        <Toolbelt
-            slots={slotsState}
-            onSlotClick={handleSlotClick}
-            keyboardEnabled={true}
-            config={config}
-        />
+        <div className="relative w-full h-screen">
+            <ToolbeltHelp
+                slots={slotsState}
+                isVisible={helpVisible}
+                onVisibilityChange={setHelpVisible}
+            />
+            <Toolbelt
+                slots={slotsState}
+                onSlotClick={handleSlotClick}
+                keyboardEnabled={true}
+                config={config}
+            />
+        </div>
     );
 }
 
@@ -230,5 +264,37 @@ export const FourRowsFourCols: Story = {
     args: {
         slots: slots4x4,
         config: { rows: 4, cols: 4 },
+    },
+};
+
+// Story showing toolbelt with help docs
+export const WithHelpDocs: Story = {
+    render: () => {
+        const [slotsState, setSlotsState] = useState(slots);
+        const [helpVisible, setHelpVisible] = useState(true);
+
+        const handleSlotClick = (slotId: string) => {
+            setSlotsState((prev) =>
+                prev.map((slot) => ({
+                    ...slot,
+                    isActive: slot.id === slotId,
+                }))
+            );
+        };
+
+        return (
+            <div className="relative w-full h-screen">
+                <ToolbeltHelp
+                    slots={slotsState}
+                    isVisible={helpVisible}
+                    onVisibilityChange={setHelpVisible}
+                />
+                <Toolbelt
+                    slots={slotsState}
+                    onSlotClick={handleSlotClick}
+                    keyboardEnabled={true}
+                />
+            </div>
+        );
     },
 };

@@ -91,7 +91,7 @@ export function Toolbelt({
             animate={{ y: 0, opacity: 1 }}
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
             className={cn(
-                "fixed bottom-8 left-8 flex flex-col gap-3 p-3 rounded-2xl border backdrop-blur-xl shadow-2xl",
+                "fixed bottom-8 left-8 flex flex-col gap-3 p-3 rounded-2xl border backdrop-blur-xl shadow-2xl z-40",
                 "border-white/10 bg-black/40",
                 className
             )}
