@@ -1,6 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { Toolbelt } from "../../client/src/components/toolbelt/toolbelt";
 import { ToolbeltHelp } from "../../client/src/components/toolbelt/toolbelt-help";
+import { UtilitiesPanel } from "../../client/src/components/utilities/utilities-panel";
+import { ColorPicker } from "../../client/src/components/utilities/color-picker";
+import { ColorPalette } from "../../client/src/components/utilities/color-palette";
+import { useUtilitiesPanel } from "../../client/src/hooks/use-utilities-panel";
 import { Pencil, Eraser, MousePointer2, PaintBucket, Move } from "lucide-react";
 import { fn, expect, userEvent, within } from "storybook/test";
 import { useState } from "react";
@@ -81,6 +85,22 @@ function InteractiveToolbelt({
 }) {
     const [slotsState, setSlotsState] = useState(initialSlots);
     const [helpVisible, setHelpVisible] = useState(true);
+    const [utilitiesExpanded, setUtilitiesExpanded] = useState(false);
+    const [pencilColor, setPencilColor] = useState("#ff0000");
+    const [paletteColors, setPaletteColors] = useState([
+        "#ff0000",
+        "#00ff00",
+        "#0000ff",
+        "#ffff00",
+        "#ff00ff",
+        "#00ffff",
+    ]);
+
+    // Use utilities panel hook for Ctrl+Space toggle
+    useUtilitiesPanel({
+        enabled: true,
+        onToggle: () => setUtilitiesExpanded((prev) => !prev),
+    });
 
     const handleSlotClick = (slotId: string) => {
         setSlotsState((prev) =>
@@ -90,6 +110,32 @@ function InteractiveToolbelt({
             }))
         );
     };
+
+    // Find the selected tool
+    const activeSlot = slotsState.find((slot) => slot.isActive && slot.tool);
+    const selectedTool = activeSlot?.tool
+        ? {
+              ...activeSlot.tool,
+              // Add utilities for pencil and fill tools
+              utilities:
+                  activeSlot.tool.id === "pencil"
+                      ? (
+                            <>
+                                <ColorPicker value={pencilColor} onChange={setPencilColor} label="Pen Color" />
+                                <ColorPalette
+                                    colors={paletteColors}
+                                    selectedColor={pencilColor}
+                                    onSelectColor={setPencilColor}
+                                    onAddColor={(color) => setPaletteColors([...paletteColors, color])}
+                                    onRemoveColor={(color) => setPaletteColors(paletteColors.filter((c) => c !== color))}
+                                />
+                            </>
+                        )
+                      : activeSlot.tool.id === "fill"
+                        ? <ColorPicker value="#00ff00" onChange={() => {}} label="Fill Color" />
+                        : undefined,
+          }
+        : undefined;
 
     return (
         <div className="relative w-full h-screen">
@@ -103,6 +149,11 @@ function InteractiveToolbelt({
                 onSlotClick={handleSlotClick}
                 keyboardEnabled={true}
                 config={config}
+            />
+            <UtilitiesPanel
+                isExpanded={utilitiesExpanded}
+                onToggle={() => setUtilitiesExpanded((prev) => !prev)}
+                selectedTool={selectedTool}
             />
         </div>
     );

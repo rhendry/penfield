@@ -1,4 +1,5 @@
 import { LucideIcon } from "lucide-react";
+import { ReactNode } from "react";
 
 export interface Tool {
     id: string;
@@ -14,6 +15,9 @@ export interface Tool {
     badgeAlignment?: "top-right" | "top-left" | "bottom-right" | "bottom-left" | "center";
     description?: string;
     hotkey?: string;
+    // Utilities - Component(s) to render in the utilities panel when this tool is selected
+    // Can be a single component or array of components
+    utilities?: ReactNode | ReactNode[];
 }
 
 export interface ToolbeltSlot {
