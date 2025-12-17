@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Plus, Trash2 } from "lucide-react";
 import { PaletteSelector, type Palette } from "./palette-selector";
@@ -36,6 +36,31 @@ export function ColorPalette({
 }: ColorPaletteProps) {
     const [showAddColor, setShowAddColor] = useState(false);
     const [newColor, setNewColor] = useState("#000000");
+    const [columns, setColumns] = useState(6);
+    const gridRef = useRef<HTMLDivElement>(null);
+
+    const SWATCH_SIZE = 40; // Fixed size for each swatch in pixels
+    const GAP = 8; // Gap between swatches
+
+    // Calculate number of columns based on available width
+    useEffect(() => {
+        const updateColumns = () => {
+            if (!gridRef.current) return;
+            const width = gridRef.current.offsetWidth;
+            const cols = Math.max(1, Math.floor((width + GAP) / (SWATCH_SIZE + GAP)));
+            setColumns(cols);
+        };
+
+        updateColumns();
+        const resizeObserver = new ResizeObserver(updateColumns);
+        if (gridRef.current) {
+            resizeObserver.observe(gridRef.current);
+        }
+
+        return () => {
+            resizeObserver.disconnect();
+        };
+    }, []);
 
     const handleAddColor = () => {
         if (onAddColor && newColor && !colors.includes(newColor) && colors.length < maxColors) {
@@ -96,7 +121,13 @@ export function ColorPalette({
             )}
 
             {/* Color Swatches */}
-            <div className="grid grid-cols-6 gap-2">
+            <div
+                ref={gridRef}
+                className="grid gap-2"
+                style={{
+                    gridTemplateColumns: `repeat(${columns}, ${SWATCH_SIZE}px)`,
+                }}
+            >
                 {colors.map((color, index) => {
                     const isSelected = color === selectedColor;
                     return (
@@ -104,13 +135,17 @@ export function ColorPalette({
                             <button
                                 onClick={() => onSelectColor(color, paletteId)}
                                 className={cn(
-                                    "w-full aspect-square rounded-lg border-2 transition-all",
+                                    "rounded-lg border-2 transition-all",
                                     "hover:scale-110",
                                     isSelected
                                         ? "border-primary shadow-[0_0_8px_rgba(var(--primary),0.5)] scale-110"
                                         : "border-white/20 hover:border-white/40"
                                 )}
-                                style={{ backgroundColor: color }}
+                                style={{
+                                    width: `${SWATCH_SIZE}px`,
+                                    height: `${SWATCH_SIZE}px`,
+                                    backgroundColor: color,
+                                }}
                                 title={color}
                             />
                             {onRemoveColor && (

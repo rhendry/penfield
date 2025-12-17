@@ -195,52 +195,84 @@ export function ColorPicker({
     }, [hue, saturation, lightness, alphaValue]);
 
     const handleGradientClick = (e: React.MouseEvent<HTMLDivElement>) => {
+        e.preventDefault();
         if (!gradientRef.current) return;
         const rect = gradientRef.current.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-        const s = Math.max(0, Math.min(100, (x / rect.width) * 100));
-        const l = Math.max(0, Math.min(100, 100 - (y / rect.height) * 100));
+        const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+        const y = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
+        // X-axis: saturation (0% left, 100% right)
+        const s = (x / rect.width) * 100;
+        // Y-axis: lightness varies based on saturation
+        // At right edge (saturation=100%): top=50% lightness (pure hue), bottom=0% (black)
+        // At left edge (saturation=0%): top=100% lightness (white), bottom=0% (black)
+        const yRatio = 1 - (y / rect.height); // 1.0 at top, 0.0 at bottom
+        const maxLightness = 100 - (s / 2); // 50% at saturation=100%, 100% at saturation=0%
+        const l = yRatio * maxLightness;
         setSaturation(s);
         setLightness(l);
     };
 
+    const handleGradientMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        setIsDragging(true);
+        handleGradientClick(e);
+    };
+
     const handleHueClick = (e: React.MouseEvent<HTMLDivElement>) => {
+        e.preventDefault();
         if (!hueRef.current) return;
         const rect = hueRef.current.getBoundingClientRect();
-        const y = e.clientY - rect.top;
-        const h = Math.max(0, Math.min(360, (y / rect.height) * 360));
+        const y = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
+        const h = (y / rect.height) * 360;
         setHue(h);
     };
 
+    const handleHueMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        setIsDraggingHue(true);
+        handleHueClick(e);
+    };
+
     const handleMouseMove = (e: MouseEvent) => {
+        e.preventDefault();
         if (isDragging && gradientRef.current) {
             const rect = gradientRef.current.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-            const s = Math.max(0, Math.min(100, (x / rect.width) * 100));
-            const l = Math.max(0, Math.min(100, 100 - (y / rect.height) * 100));
+            const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+            const y = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
+            // X-axis: saturation (0% left, 100% right)
+            const s = (x / rect.width) * 100;
+            // Y-axis: lightness varies based on saturation
+            const yRatio = 1 - (y / rect.height); // 1.0 at top, 0.0 at bottom
+            const maxLightness = 100 - (s / 2); // 50% at saturation=100%, 100% at saturation=0%
+            const l = yRatio * maxLightness;
             setSaturation(s);
             setLightness(l);
         }
         if (isDraggingHue && hueRef.current) {
             const rect = hueRef.current.getBoundingClientRect();
-            const y = e.clientY - rect.top;
-            const h = Math.max(0, Math.min(360, (y / rect.height) * 360));
+            const y = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
+            const h = (y / rect.height) * 360;
             setHue(h);
         }
     };
 
-    const handleMouseUp = () => {
+    const handleMouseUp = (e: MouseEvent) => {
+        e.preventDefault();
         setIsDragging(false);
         setIsDraggingHue(false);
     };
 
     useEffect(() => {
         if (isDragging || isDraggingHue) {
+            // Prevent text selection during drag
+            document.body.style.userSelect = "none";
+            document.body.style.webkitUserSelect = "none";
+            
             window.addEventListener("mousemove", handleMouseMove);
             window.addEventListener("mouseup", handleMouseUp);
             return () => {
+                document.body.style.userSelect = "";
+                document.body.style.webkitUserSelect = "";
                 window.removeEventListener("mousemove", handleMouseMove);
                 window.removeEventListener("mouseup", handleMouseUp);
             };
@@ -276,8 +308,8 @@ export function ColorPicker({
                 <div
                     ref={gradientRef}
                     onClick={handleGradientClick}
-                    onMouseDown={() => setIsDragging(true)}
-                    className="relative w-full h-48 rounded-lg border-2 border-white/20 cursor-crosshair overflow-hidden"
+                    onMouseDown={handleGradientMouseDown}
+                    className="relative w-full h-48 rounded-lg border-2 border-white/20 cursor-crosshair overflow-hidden select-none"
                     style={{
                         background: `linear-gradient(to top, black, transparent), linear-gradient(to right, white, ${currentColor})`,
                     }}
@@ -287,7 +319,15 @@ export function ColorPicker({
                         className="absolute w-4 h-4 rounded-full border-2 border-white shadow-lg pointer-events-none"
                         style={{
                             left: `${saturation}%`,
-                            top: `${100 - lightness}%`,
+                            // Convert HSL lightness back to Y position
+                            // lightness = yRatio * maxLightness, where maxLightness = 100 - (saturation / 2)
+                            // yRatio = lightness / maxLightness
+                            // y = (1 - yRatio) * 100%
+                            top: (() => {
+                                const maxLightness = 100 - (saturation / 2);
+                                const yRatio = maxLightness > 0 ? lightness / maxLightness : 0;
+                                return `${(1 - yRatio) * 100}%`;
+                            })(),
                             transform: "translate(-50%, -50%)",
                             backgroundColor: selectedColor,
                         }}
@@ -299,8 +339,8 @@ export function ColorPicker({
                     <div
                         ref={hueRef}
                         onClick={handleHueClick}
-                        onMouseDown={() => setIsDraggingHue(true)}
-                        className="relative w-8 h-48 rounded border-2 border-white/20 cursor-pointer overflow-hidden flex-shrink-0"
+                        onMouseDown={handleHueMouseDown}
+                        className="relative w-8 h-48 rounded border-2 border-white/20 cursor-pointer overflow-hidden flex-shrink-0 select-none"
                         style={{
                             background: "linear-gradient(to bottom, #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%)",
                         }}
@@ -339,6 +379,7 @@ export function ColorPicker({
                                 </span>
                             </div>
                             <div className="relative">
+                                {/* Color gradient overlay */}
                                 <div
                                     className="absolute inset-0 rounded-lg"
                                     style={{
@@ -352,9 +393,9 @@ export function ColorPicker({
                                     step="0.01"
                                     value={alphaValue}
                                     onChange={(e) => handleAlphaChange(parseFloat(e.target.value))}
-                                    className="relative w-full h-2 rounded-lg appearance-none cursor-pointer bg-transparent accent-primary"
+                                    className="relative w-full h-2 rounded-lg appearance-none cursor-pointer accent-primary"
                                     style={{
-                                        background: `linear-gradient(to right, transparent 0%, transparent ${alphaValue * 100}%, rgba(255,255,255,0.3) ${alphaValue * 100}%, rgba(255,255,255,0.3) 100%)`,
+                                        background: `rgba(128, 128, 128, 0.4)`,
                                     }}
                                 />
                             </div>

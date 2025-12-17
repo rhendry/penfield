@@ -126,7 +126,12 @@ export const Interactive: Story = {
         const [selectedToolId, setSelectedToolId] = useState<string | undefined>("pencil");
         const [color, setColor] = useState("#ff0000ff");
         const [selectedPaletteId, setSelectedPaletteId] = useState("default-1");
-        const [paletteColors, setPaletteColors] = useState(["#ff0000", "#00ff00", "#0000ff"]);
+        const [paletteColors, setPaletteColors] = useState([
+            "#ff0000", "#ff7f00", "#ffff00", "#7fff00", "#00ff00",
+            "#00ff7f", "#00ffff", "#007fff", "#0000ff", "#7f00ff",
+            "#ff00ff", "#ff007f", "#ff3333", "#33ff33", "#3333ff",
+            "#ff9933", "#99ff33", "#3399ff", "#ff3399", "#9933ff",
+        ]);
         const palettes = [
             { id: "default-1", name: "Default Palette", isDefault: true },
             { id: "custom-1", name: "My Custom Palette", isDefault: false },

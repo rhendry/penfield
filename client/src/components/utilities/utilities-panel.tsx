@@ -1,4 +1,4 @@
-import { ReactNode, useState, useRef, useEffect } from "react";
+import React, { ReactNode, useState, useRef, useEffect, Children, isValidElement } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { ChevronRight, ChevronLeft } from "lucide-react";
@@ -40,11 +40,23 @@ export function UtilitiesPanel({
     // Get utilities for the selected tool
     const utilities = selectedTool ? getToolUtilities(selectedTool) : undefined;
     
-    // Normalize utilities to array
+    // Normalize utilities to array, extracting children from fragments
     const utilitiesArray = utilities
         ? Array.isArray(utilities)
-            ? utilities
-            : [utilities]
+            ? utilities.flatMap(util => {
+                // If it's a fragment, extract its children
+                if (isValidElement(util) && util.type === React.Fragment) {
+                    return Children.toArray(util.props.children);
+                }
+                return [util];
+            })
+            : (() => {
+                // If it's a fragment, extract its children
+                if (isValidElement(utilities) && utilities.type === React.Fragment) {
+                    return Children.toArray(utilities.props.children);
+                }
+                return [utilities];
+            })()
         : [];
 
     // Handle resize drag
@@ -153,10 +165,15 @@ export function UtilitiesPanel({
                         </div>
 
                         {/* Content */}
-                        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                        <div className="flex-1 overflow-y-auto p-4">
                             {utilitiesArray.length > 0 ? (
                                 utilitiesArray.map((utility, index) => (
-                                    <div key={index}>{utility}</div>
+                                    <div 
+                                        key={index} 
+                                        className={index > 0 ? "pt-4 mt-4 border-t border-gray-500/60" : ""}
+                                    >
+                                        {utility}
+                                    </div>
                                 ))
                             ) : (
                                 <div className="text-center py-8 text-muted-foreground">

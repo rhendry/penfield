@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { ChevronDown, Search } from "lucide-react";
 
@@ -34,6 +34,25 @@ export function PaletteSelector({
     const filteredPalettes = palettes.filter((palette) =>
         palette.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
+
+    // Handle Escape key to close dropdown
+    useEffect(() => {
+        if (!isOpen) return;
+
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Escape") {
+                event.preventDefault();
+                event.stopPropagation();
+                setIsOpen(false);
+                setSearchQuery("");
+            }
+        };
+
+        window.addEventListener("keydown", handleKeyDown, { capture: true });
+        return () => {
+            window.removeEventListener("keydown", handleKeyDown, { capture: true });
+        };
+    }, [isOpen]);
 
     return (
         <div className={cn("relative", className)}>
