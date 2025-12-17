@@ -16,7 +16,7 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
     render: () => {
-        const [color, setColor] = useState("#ff0000");
+        const [color, setColor] = useState("#ff0000ff");
         return (
             <div className="p-8 bg-background">
                 <ColorPicker value={color} onChange={setColor} />
@@ -30,10 +30,24 @@ export const Default: Story = {
 
 export const WithLabel: Story = {
     render: () => {
-        const [color, setColor] = useState("#00ff00");
+        const [color, setColor] = useState("#00ff00ff");
         return (
             <div className="p-8 bg-background">
                 <ColorPicker value={color} onChange={setColor} label="Foreground Color" />
+                <p className="mt-4 text-sm text-muted-foreground">
+                    Selected: {color}
+                </p>
+            </div>
+        );
+    },
+};
+
+export const WithAlpha: Story = {
+    render: () => {
+        const [color, setColor] = useState("#ff000080");
+        return (
+            <div className="p-8 bg-background">
+                <ColorPicker value={color} onChange={setColor} label="Color with Alpha" />
                 <p className="mt-4 text-sm text-muted-foreground">
                     Selected: {color}
                 </p>

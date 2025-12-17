@@ -86,7 +86,9 @@ function InteractiveToolbelt({
     const [slotsState, setSlotsState] = useState(initialSlots);
     const [helpVisible, setHelpVisible] = useState(true);
     const [utilitiesExpanded, setUtilitiesExpanded] = useState(false);
-    const [pencilColor, setPencilColor] = useState("#ff0000");
+    const [utilitiesWidth, setUtilitiesWidth] = useState(320);
+    const [pencilColor, setPencilColor] = useState("#ff0000ff");
+    const [selectedPaletteId, setSelectedPaletteId] = useState("default-1");
     const [paletteColors, setPaletteColors] = useState([
         "#ff0000",
         "#00ff00",
@@ -95,6 +97,10 @@ function InteractiveToolbelt({
         "#ff00ff",
         "#00ffff",
     ]);
+    const palettes = [
+        { id: "default-1", name: "Default Palette", isDefault: true },
+        { id: "custom-1", name: "My Custom Palette", isDefault: false },
+    ];
 
     // Use utilities panel hook for Ctrl+Space toggle
     useUtilitiesPanel({
@@ -123,16 +129,28 @@ function InteractiveToolbelt({
                             <>
                                 <ColorPicker value={pencilColor} onChange={setPencilColor} label="Pen Color" />
                                 <ColorPalette
+                                    paletteId={selectedPaletteId}
+                                    palettes={palettes}
                                     colors={paletteColors}
-                                    selectedColor={pencilColor}
-                                    onSelectColor={setPencilColor}
-                                    onAddColor={(color) => setPaletteColors([...paletteColors, color])}
-                                    onRemoveColor={(color) => setPaletteColors(paletteColors.filter((c) => c !== color))}
+                                    selectedColor={pencilColor.replace(/ff$/, "")}
+                                    onSelectPalette={setSelectedPaletteId}
+                                    onSelectColor={(color, paletteId) => {
+                                        setPencilColor(color + "ff");
+                                        console.log("Selected color:", color, "from palette:", paletteId);
+                                    }}
+                                    onAddColor={(color, paletteId) => {
+                                        setPaletteColors([...paletteColors, color]);
+                                        console.log("Added color:", color, "to palette:", paletteId);
+                                    }}
+                                    onRemoveColor={(color, paletteId) => {
+                                        setPaletteColors(paletteColors.filter((c) => c !== color));
+                                        console.log("Removed color:", color, "from palette:", paletteId);
+                                    }}
                                 />
                             </>
                         )
                       : activeSlot.tool.id === "fill"
-                        ? <ColorPicker value="#00ff00" onChange={() => {}} label="Fill Color" />
+                        ? <ColorPicker value="#00ff00ff" onChange={() => {}} label="Fill Color" />
                         : undefined,
           }
         : undefined;
@@ -154,6 +172,8 @@ function InteractiveToolbelt({
                 isExpanded={utilitiesExpanded}
                 onToggle={() => setUtilitiesExpanded((prev) => !prev)}
                 selectedTool={selectedTool}
+                width={utilitiesWidth}
+                onWidthChange={setUtilitiesWidth}
             />
         </div>
     );

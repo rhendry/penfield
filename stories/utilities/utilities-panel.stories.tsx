@@ -48,7 +48,7 @@ export const ExpandedEmpty: Story = {
 export const WithColorPicker: Story = {
     render: () => {
         const [isExpanded, setIsExpanded] = useState(true);
-        const [color, setColor] = useState("#ff0000");
+        const [color, setColor] = useState("#ff0000ff");
         const tool = {
             id: "pencil",
             name: "Pencil",
@@ -70,8 +70,13 @@ export const WithColorPicker: Story = {
 export const WithColorPalette: Story = {
     render: () => {
         const [isExpanded, setIsExpanded] = useState(true);
+        const [selectedPaletteId, setSelectedPaletteId] = useState("default-1");
         const [colors, setColors] = useState(["#ff0000", "#00ff00", "#0000ff", "#ffff00", "#ff00ff"]);
         const [selectedColor, setSelectedColor] = useState("#ff0000");
+        const palettes = [
+            { id: "default-1", name: "Default Palette", isDefault: true },
+            { id: "custom-1", name: "My Custom Palette", isDefault: false },
+        ];
         
         const tool = {
             id: "pencil",
@@ -79,13 +84,25 @@ export const WithColorPalette: Story = {
             icon: Pencil,
             utilities: (
                 <>
-                    <ColorPicker value={selectedColor} onChange={setSelectedColor} />
+                    <ColorPicker value={selectedColor + "ff"} onChange={(c) => setSelectedColor(c.replace(/ff$/, ""))} />
                     <ColorPalette
+                        paletteId={selectedPaletteId}
+                        palettes={palettes}
                         colors={colors}
                         selectedColor={selectedColor}
-                        onSelectColor={setSelectedColor}
-                        onAddColor={(color) => setColors([...colors, color])}
-                        onRemoveColor={(color) => setColors(colors.filter((c) => c !== color))}
+                        onSelectPalette={setSelectedPaletteId}
+                        onSelectColor={(color, paletteId) => {
+                            setSelectedColor(color);
+                            console.log("Selected color:", color, "from palette:", paletteId);
+                        }}
+                        onAddColor={(color, paletteId) => {
+                            setColors([...colors, color]);
+                            console.log("Added color:", color, "to palette:", paletteId);
+                        }}
+                        onRemoveColor={(color, paletteId) => {
+                            setColors(colors.filter((c) => c !== color));
+                            console.log("Removed color:", color, "from palette:", paletteId);
+                        }}
                     />
                 </>
             ),
@@ -107,8 +124,13 @@ export const Interactive: Story = {
     render: () => {
         const [isExpanded, setIsExpanded] = useState(false);
         const [selectedToolId, setSelectedToolId] = useState<string | undefined>("pencil");
-        const [color, setColor] = useState("#ff0000");
+        const [color, setColor] = useState("#ff0000ff");
+        const [selectedPaletteId, setSelectedPaletteId] = useState("default-1");
         const [paletteColors, setPaletteColors] = useState(["#ff0000", "#00ff00", "#0000ff"]);
+        const palettes = [
+            { id: "default-1", name: "Default Palette", isDefault: true },
+            { id: "custom-1", name: "My Custom Palette", isDefault: false },
+        ];
         
         const tools = {
             pencil: {
@@ -119,11 +141,23 @@ export const Interactive: Story = {
                     <>
                         <ColorPicker value={color} onChange={setColor} />
                         <ColorPalette
+                            paletteId={selectedPaletteId}
+                            palettes={palettes}
                             colors={paletteColors}
-                            selectedColor={color}
-                            onSelectColor={setColor}
-                            onAddColor={(c) => setPaletteColors([...paletteColors, c])}
-                            onRemoveColor={(c) => setPaletteColors(paletteColors.filter((col) => col !== c))}
+                            selectedColor={color.replace(/ff$/, "")}
+                            onSelectPalette={setSelectedPaletteId}
+                            onSelectColor={(c, pid) => {
+                                setColor(c + "ff");
+                                console.log("Selected color:", c, "from palette:", pid);
+                            }}
+                            onAddColor={(c, pid) => {
+                                setPaletteColors([...paletteColors, c]);
+                                console.log("Added color:", c, "to palette:", pid);
+                            }}
+                            onRemoveColor={(c, pid) => {
+                                setPaletteColors(paletteColors.filter((col) => col !== c));
+                                console.log("Removed color:", c, "from palette:", pid);
+                            }}
                         />
                     </>
                 ),
@@ -138,6 +172,9 @@ export const Interactive: Story = {
                     <h2 className="text-xl font-bold">Utilities Panel Demo</h2>
                     <p className="text-sm text-muted-foreground">
                         Press Ctrl+Space to toggle the panel, or click the toggle button
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                        Drag the left edge of the panel to resize
                     </p>
                     <div className="flex gap-2">
                         <button

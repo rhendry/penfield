@@ -1,26 +1,36 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Plus, Trash2 } from "lucide-react";
+import { PaletteSelector, type Palette } from "./palette-selector";
 
 export interface ColorPaletteProps {
-    colors: string[];
+    paletteId: string;
+    palettes: Palette[];
+    colors: string[]; // Colors for the selected palette
     selectedColor: string;
-    onSelectColor: (color: string) => void;
-    onAddColor?: (color: string) => void;
-    onRemoveColor?: (color: string) => void;
+    onSelectPalette: (paletteId: string) => void;
+    onSelectColor: (color: string, paletteId: string) => void;
+    onAddColor?: (color: string, paletteId: string) => void;
+    onRemoveColor?: (color: string, paletteId: string) => void;
+    onCreatePalette?: () => void;
     maxColors?: number;
     className?: string;
 }
 
 /**
  * ColorPalette - Palette of colors for quick selection.
+ * All data comes from props. Includes palette selector dropdown.
  */
 export function ColorPalette({
+    paletteId,
+    palettes,
     colors,
     selectedColor,
+    onSelectPalette,
     onSelectColor,
     onAddColor,
     onRemoveColor,
+    onCreatePalette,
     maxColors = 20,
     className,
 }: ColorPaletteProps) {
@@ -29,7 +39,7 @@ export function ColorPalette({
 
     const handleAddColor = () => {
         if (onAddColor && newColor && !colors.includes(newColor) && colors.length < maxColors) {
-            onAddColor(newColor);
+            onAddColor(newColor, paletteId);
             setNewColor("#000000");
             setShowAddColor(false);
         }
@@ -37,18 +47,28 @@ export function ColorPalette({
 
     return (
         <div className={cn("space-y-3", className)}>
-            <div className="flex items-center justify-between">
+            {/* Palette Selector */}
+            <div className="space-y-2">
                 <label className="text-sm font-medium text-foreground">Color Palette</label>
-                {onAddColor && colors.length < maxColors && (
-                    <button
-                        onClick={() => setShowAddColor(!showAddColor)}
-                        className="p-1.5 rounded-lg border border-white/10 hover:bg-background/60 transition-colors"
-                        title="Add color"
-                    >
-                        <Plus size={14} className="text-muted-foreground" />
-                    </button>
-                )}
+                <PaletteSelector
+                    palettes={palettes}
+                    selectedPaletteId={paletteId}
+                    onSelectPalette={onSelectPalette}
+                    onCreatePalette={onCreatePalette}
+                />
             </div>
+
+            {/* Add Color Button */}
+            {onAddColor && colors.length < maxColors && (
+                <button
+                    onClick={() => setShowAddColor(!showAddColor)}
+                    className="w-full px-3 py-2 rounded-lg border border-white/10 hover:bg-background/60 transition-colors flex items-center justify-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+                    title="Add color"
+                >
+                    <Plus size={14} />
+                    <span>Add Color</span>
+                </button>
+            )}
 
             {/* Add Color Input */}
             {showAddColor && onAddColor && (
@@ -82,7 +102,7 @@ export function ColorPalette({
                     return (
                         <div key={index} className="relative group">
                             <button
-                                onClick={() => onSelectColor(color)}
+                                onClick={() => onSelectColor(color, paletteId)}
                                 className={cn(
                                     "w-full aspect-square rounded-lg border-2 transition-all",
                                     "hover:scale-110",
@@ -97,7 +117,7 @@ export function ColorPalette({
                                 <button
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        onRemoveColor(color);
+                                        onRemoveColor(color, paletteId);
                                     }}
                                     className={cn(
                                         "absolute -top-1 -right-1 w-4 h-4 rounded-full bg-destructive",
@@ -118,7 +138,7 @@ export function ColorPalette({
                 <div className="text-center py-4 text-muted-foreground">
                     <p className="text-xs">No colors in palette</p>
                     {onAddColor && (
-                        <p className="text-xs mt-1">Click + to add colors</p>
+                        <p className="text-xs mt-1">Click "Add Color" to add colors</p>
                     )}
                 </div>
             )}
