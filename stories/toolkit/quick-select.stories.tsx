@@ -93,19 +93,31 @@ export const WithFiveSlots: Story = {
 export const Interactive: Story = {
     render: () => {
         const [activeSlotId, setActiveSlotId] = useState<string | undefined>("3");
+        const [slots, setSlots] = useState(
+            tools.map((tool, index) => ({
+                id: String(index + 1),
+                tool,
+                position: index,
+                lastUsedAt: new Date(),
+            }))
+        );
+
         return (
             <div className="relative w-full h-screen bg-background">
                 <QuickSelect
-                    slots={tools.map((tool, index) => ({
-                        id: String(index + 1),
-                        tool,
-                        position: index,
-                        lastUsedAt: new Date(),
-                    }))}
+                    slots={slots}
                     activeSlotId={activeSlotId}
                     onSelect={(slotId) => {
                         setActiveSlotId(slotId);
                         console.log("Selected slot:", slotId);
+                    }}
+                    onRemove={(slotId) => {
+                        setSlots((prev) => prev.filter((slot) => slot.id !== slotId));
+                        if (activeSlotId === slotId) {
+                            const remaining = slots.filter((slot) => slot.id !== slotId);
+                            setActiveSlotId(remaining.length > 0 ? remaining[0].id : undefined);
+                        }
+                        console.log("Removed slot:", slotId);
                     }}
                 />
                 <div className="fixed top-4 left-4 p-4 bg-background border rounded-lg">
@@ -114,6 +126,12 @@ export const Interactive: Story = {
                     </p>
                     <p className="text-xs text-muted-foreground mt-2">
                         Active: {activeSlotId || "None"}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                        Slots: {slots.length} / 5
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                        Click trash icon on active slot to remove
                     </p>
                 </div>
             </div>
