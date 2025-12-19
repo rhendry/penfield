@@ -2,6 +2,7 @@ import { ToolbeltSlot } from "./types";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
+import { KeyboardKey } from "@/components/ui/keyboard-key";
 
 export interface ToolbeltHelpProps {
     slots: ToolbeltSlot[];
@@ -108,9 +109,9 @@ export function ToolbeltHelp({
                                     <h3 className="font-semibold text-foreground text-sm">
                                         {activeSlot.tool.name}
                                     </h3>
-                                    <span className="text-xs font-mono text-muted-foreground">
-                                        [{activeSlot.hotkey}]
-                                    </span>
+                                    <KeyboardKey size="sm">
+                                        {activeSlot.hotkey}
+                                    </KeyboardKey>
                                 </div>
                                 {activeSlot.tool.description && (
                                     <p className="text-xs text-foreground/90 ml-4 flex-1">
@@ -160,9 +161,9 @@ export function ToolbeltHelp({
                                         >
                                             {slot.tool!.name}
                                         </span>
-                                        <span className="text-xs font-mono text-muted-foreground">
-                                            [{slot.hotkey}]
-                                        </span>
+                                        <KeyboardKey size="sm">
+                                            {slot.hotkey}
+                                        </KeyboardKey>
                                     </div>
                                     {slot.tool!.description && (
                                         <p

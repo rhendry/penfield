@@ -1,6 +1,7 @@
 import { IconWithBadge } from "./icon-with-badge";
 import { cn } from "@/lib/utils";
 import { Tool, Toolbelt, Action } from "./toolkit-explorer";
+import { KeyboardKey } from "@/components/ui/keyboard-key";
 
 export interface SearchResultsProps {
     results: {
@@ -95,9 +96,9 @@ export function SearchResults({
                                             {toolbelt.name}
                                         </span>
                                         {toolbelt.hotkey && (
-                                            <span className="text-xs font-mono text-muted-foreground">
-                                                [{toolbelt.hotkey}]
-                                            </span>
+                                            <KeyboardKey size="sm">
+                                                {toolbelt.hotkey}
+                                            </KeyboardKey>
                                         )}
                                     </div>
                                     {toolbelt.description && (

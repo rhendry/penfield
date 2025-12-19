@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { Plus, Trash2 } from "lucide-react";
 import { PaletteSelector, type Palette } from "./palette-selector";
+import { HotkeyTip } from "@/components/ui/hotkey-tip";
 
 export interface ColorPaletteProps {
     paletteId: string;
@@ -159,13 +160,12 @@ export function ColorPalette({
 
             {/* Keyboard Shortcuts Helper */}
             {colors.length > 0 && (
-                <div className="text-xs text-muted-foreground flex items-center gap-2">
-                    <span>Shortcuts:</span>
-                    <kbd className="px-1.5 py-0.5 rounded bg-background/60 border border-white/10 font-mono text-[10px]">Z</kbd>
-                    <span>←</span>
-                    <kbd className="px-1.5 py-0.5 rounded bg-background/60 border border-white/10 font-mono text-[10px]">X</kbd>
-                    <span>→</span>
-                </div>
+                <HotkeyTip
+                    label="Cycle colors"
+                    keys={["Z", "X"]}
+                    size="sm"
+                    className="mt-1"
+                />
             )}
 
             {/* Color Swatches */}

@@ -4,6 +4,8 @@ import { cn } from "@/lib/utils";
 import { ChevronRight, ChevronLeft } from "lucide-react";
 import { Tool } from "../toolbelt/types";
 import { getToolUtilities } from "./utilities-registry";
+import { HotkeyTip } from "@/components/ui/hotkey-tip";
+import { KeyboardKey } from "@/components/ui/keyboard-key";
 
 export interface UtilitiesPanelProps {
     isExpanded: boolean;
@@ -105,10 +107,10 @@ export function UtilitiesPanel({
                 onClick={onToggle}
                 className={cn(
                     "fixed right-0 top-1/2 -translate-y-1/2 z-50",
-                    "w-8 h-16 flex items-center justify-center",
+                    "flex items-center gap-2",
                     "bg-background/90 border border-l-0 border-white/10 rounded-l-lg",
                     "backdrop-blur-md",
-                    isExpanded ? "" : "shadow-lg",
+                    isExpanded ? "w-8 h-16 px-0" : "px-3 py-2 h-auto min-w-[120px] shadow-lg",
                     "hover:bg-background transition-colors",
                     "group"
                 )}
@@ -117,7 +119,14 @@ export function UtilitiesPanel({
                 {isExpanded ? (
                     <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
                 ) : (
-                    <ChevronLeft className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+                    <>
+                        <ChevronLeft className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors flex-shrink-0" />
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                            <KeyboardKey size="sm">Ctrl</KeyboardKey>
+                            <span className="text-muted-foreground/60 text-[10px]">+</span>
+                            <KeyboardKey size="sm">Space</KeyboardKey>
+                        </div>
+                    </>
                 )}
             </motion.button>
 
@@ -152,16 +161,20 @@ export function UtilitiesPanel({
                         </div>
 
                         {/* Header */}
-                        <div className="p-4 border-b border-white/10">
-                            <h2 className="text-lg font-semibold text-foreground">Utilities</h2>
-                            {selectedTool && (
-                                <p className="text-xs text-muted-foreground mt-1">
-                                    {selectedTool.name}
-                                </p>
-                            )}
-                            <p className="text-xs text-muted-foreground mt-1">
-                                Press Ctrl+Space to toggle
-                            </p>
+                        <div className="px-4 py-3 border-b border-white/10 space-y-2">
+                            <div>
+                                <h2 className="text-base font-semibold text-foreground">Utilities</h2>
+                                {selectedTool && (
+                                    <p className="text-sm text-muted-foreground mt-0.5">
+                                        {selectedTool.name}
+                                    </p>
+                                )}
+                            </div>
+                            <HotkeyTip
+                                label="Toggle panel"
+                                keys={[["Ctrl", "Space"]]}
+                                size="sm"
+                            />
                         </div>
 
                         {/* Content */}
