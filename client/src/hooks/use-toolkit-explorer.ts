@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef } from "react";
+import { useEffect, useRef } from "react";
 
 export interface UseToolkitExplorerOptions {
     enabled?: boolean;
@@ -23,21 +23,16 @@ export function useToolkitExplorer({
         if (!enabled) return;
 
         const handleKeyDown = (event: KeyboardEvent) => {
-            if (
-                event.target instanceof HTMLInputElement ||
-                event.target instanceof HTMLTextAreaElement ||
-                event.target instanceof HTMLSelectElement
-            ) {
-                return;
-            }
-
-            if (event.key === " " || event.code === "Space") {
+            // Space is a global hotkey - should work everywhere
+            // But don't handle it if Ctrl is pressed (Ctrl+Space is for utilities panel)
+            if ((event.key === " " || event.code === "Space") && !event.ctrlKey && !event.metaKey) {
                 event.preventDefault();
                 event.stopPropagation();
                 onToggleRef.current();
             }
         };
 
+        // Use capture phase to catch events before they reach inputs
         window.addEventListener("keydown", handleKeyDown, { capture: true });
         return () => {
             window.removeEventListener("keydown", handleKeyDown, { capture: true });

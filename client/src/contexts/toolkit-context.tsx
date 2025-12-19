@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, ReactNode } from "react";
 import { ToolbeltSlot, QuickSelectSlot, Tool } from "@/components/toolbelt/types";
 import { Toolbelt as ToolbeltType } from "@/components/toolbelt/toolbelt-selector";
 
@@ -6,21 +6,21 @@ export interface ToolkitContextValue {
     // Current equipped toolbelt
     equippedToolbelt: ToolbeltType | null;
     setEquippedToolbelt: (toolbelt: ToolbeltType | null) => void;
-    
+
     // Toolbelt slots
     toolbeltSlots: ToolbeltSlot[];
     setToolbeltSlots: (slots: ToolbeltSlot[]) => void;
-    
+
     // Quick-select slots
     quickSelectSlots: QuickSelectSlot[];
     setQuickSelectSlots: (slots: QuickSelectSlot[]) => void;
     addQuickSelectSlot: (tool: Tool) => void;
     removeQuickSelectSlot: (slotId: string) => void;
-    
+
     // Toolkit explorer state
     isExplorerOpen: boolean;
-    setIsExplorerOpen: (open: boolean) => void;
-    
+    setIsExplorerOpen: React.Dispatch<React.SetStateAction<boolean>>;
+
     // Available toolkits/tools (loaded on mount)
     availableTools: Tool[];
     setAvailableTools: (tools: Tool[]) => void;

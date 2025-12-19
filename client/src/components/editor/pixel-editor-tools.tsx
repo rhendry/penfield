@@ -11,7 +11,7 @@ export const PEN_TOOL: Tool = {
     name: "Pen",
     description: "Draw pixels with left and right click colors",
     iconType: "lucide",
-    iconName: "PenTool",
+    iconName: "Pencil",
     hotkey: "1",
 };
 

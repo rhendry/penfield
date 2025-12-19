@@ -15,7 +15,7 @@ import { UtilitiesPanel } from "@/components/utilities/utilities-panel";
 import { useToolkitExplorer } from "@/hooks/use-toolkit-explorer";
 import { Tool } from "@/components/toolbelt/types";
 import { ToolbeltSlot } from "@/components/toolbelt/types";
-import { PEN_TOOL, ERASER_TOOL, FILL_TOOL, DEFAULT_PIXEL_TOOLBELT } from "@/components/editor/pixel-editor-tools";
+import { PEN_TOOL, DEFAULT_PIXEL_TOOLBELT } from "@/components/editor/pixel-editor-tools";
 import { createPenUtilities } from "@/tools";
 import { ColorPicker } from "@/components/utilities/color-picker";
 import { ColorPalette } from "@/components/utilities/color-palette";
@@ -129,8 +129,11 @@ function PixelEditorContent() {
 
     // Initialize pixels from asset content
     useEffect(() => {
-        if (asset?.content?.grid) {
-            setPixels(asset.content.grid);
+        if (asset?.content && typeof asset.content === "object" && "grid" in asset.content) {
+            const grid = (asset.content as { grid?: Record<string, string> }).grid;
+            if (grid) {
+                setPixels(grid);
+            }
         }
     }, [asset]);
 
@@ -170,7 +173,7 @@ function PixelEditorContent() {
     // Handle toolkit explorer toolbelt selection
     const handleToolbeltSelect = useCallback((toolbeltId: string) => {
         const toolbelt = availableToolbelts.find((tb) => String(tb.id) === toolbeltId);
-        if (toolbelt && toolbelt.slots) {
+        if (toolbelt && "slots" in toolbelt && toolbelt.slots) {
             setToolbeltSlots(toolbelt.slots as ToolbeltSlot[]);
             setIsExplorerOpen(false);
         }
@@ -320,31 +323,30 @@ function PixelEditorContent() {
         await saveAssetMutation.mutateAsync({ grid: pixels });
     }, [pixels, saveAssetMutation]);
 
-    // Handle utilities panel toggle (Ctrl+Space)
+    // Handle utilities panel toggle (Ctrl+Space / Cmd+Space) - global hotkey
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (
-                e.target instanceof HTMLInputElement ||
-                e.target instanceof HTMLTextAreaElement ||
-                e.target instanceof HTMLSelectElement
-            ) {
-                return;
-            }
-
-            if (e.ctrlKey && e.key === " ") {
+            // Ctrl+Space (or Cmd+Space on Mac) is a global hotkey, should work everywhere
+            if ((e.ctrlKey || e.metaKey) && (e.key === " " || e.code === "Space")) {
                 e.preventDefault();
+                e.stopPropagation();
                 setUtilitiesPanelExpanded((prev) => !prev);
             }
         };
 
-        window.addEventListener("keydown", handleKeyDown);
-        return () => window.removeEventListener("keydown", handleKeyDown);
+        // Use capture phase to catch events before they reach inputs
+        window.addEventListener("keydown", handleKeyDown, { capture: true });
+        return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
     }, []);
 
     // Toolkit explorer toggle
+    const toggleExplorer = useCallback(() => {
+        setIsExplorerOpen((prev: boolean) => !prev);
+    }, [setIsExplorerOpen]);
+
     useToolkitExplorer({
         enabled: true,
-        onToggle: () => setIsExplorerOpen((prev) => !prev),
+        onToggle: toggleExplorer,
     });
 
     if (isLoading) {
@@ -431,7 +433,7 @@ function PixelEditorContent() {
                 <UtilitiesPanel
                     isExpanded={utilitiesPanelExpanded}
                     onToggle={() => setUtilitiesPanelExpanded((prev) => !prev)}
-                    selectedTool={selectedToolWithUtilities}
+                    selectedTool={selectedToolWithUtilities || undefined}
                     width={utilitiesPanelWidth}
                     onWidthChange={setUtilitiesPanelWidth}
                 />

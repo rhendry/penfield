@@ -111,7 +111,7 @@ export function ToolSlotLayout<T>({
     const rows = groupItemsByRow(items, getHotkey, normalizedConfig);
 
     return (
-        <div className={cn("flex flex-col gap-2", className)}>
+        <div className={cn("flex flex-col gap-2 pb-0", className)}>
             {rows.map((row, rowIndex) => (
                 <div
                     key={rowIndex}

@@ -1,4 +1,4 @@
-import { LucideIcon, PenTool, Eraser, PaintBucket } from "lucide-react";
+import { LucideIcon, Pencil, Eraser, PaintBucket } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
 
@@ -13,7 +13,7 @@ function registerLucideIcon(iconName: string, icon: LucideIcon): void {
 }
 
 // Pre-register common icons
-registerLucideIcon("PenTool", PenTool);
+registerLucideIcon("Pencil", Pencil);
 registerLucideIcon("Eraser", Eraser);
 registerLucideIcon("PaintBucket", PaintBucket);
 
