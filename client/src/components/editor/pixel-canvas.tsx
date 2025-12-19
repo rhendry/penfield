@@ -14,6 +14,8 @@ export interface PixelCanvasProps {
     xAxisColor?: string;
     /** Color for y-axis line */
     yAxisColor?: string;
+    /** Pixel data: key is "x,y", value is color string */
+    pixels?: Record<string, string>;
     /** Additional className */
     className?: string;
 }
@@ -29,6 +31,7 @@ export function PixelCanvas({
     gridLineColor = "#e5e5e5",
     xAxisColor = "#3b82f6",
     yAxisColor = "#3b82f6",
+    pixels = {},
     className,
 }: PixelCanvasProps) {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -49,6 +52,30 @@ export function PixelCanvas({
     // Track if we've initialized
     const [isInitialized, setIsInitialized] = useState(false);
     
+    // Clamp pan to boundaries
+    // Pan coordinates are in screen space. ViewBox shows canvas coordinates.
+    // Canvas goes from -halfSize to +halfSize.
+    // viewBoxX = -panX/zoom, viewBoxWidth = containerWidth/zoom
+    // We want: -halfSize <= viewBoxX and viewBoxX + viewBoxWidth <= halfSize
+    // So: -halfSize <= -panX/zoom → panX <= halfSize * zoom
+    // And: -panX/zoom + containerWidth/zoom <= halfSize → panX >= containerWidth - halfSize * zoom
+    const clampPan = useCallback((x: number, y: number, currentZoom: number, containerWidth: number, containerHeight: number) => {
+        const halfSize = maxSize / 2;
+        
+        // Clamp panX: ensure viewBox stays within [-halfSize, halfSize]
+        const minPanX = containerWidth - halfSize * currentZoom;
+        const maxPanX = halfSize * currentZoom;
+        
+        // Clamp panY similarly
+        const minPanY = containerHeight - halfSize * currentZoom;
+        const maxPanY = halfSize * currentZoom;
+        
+        return {
+            x: Math.max(minPanX, Math.min(maxPanX, x)),
+            y: Math.max(minPanY, Math.min(maxPanY, y)),
+        };
+    }, [maxSize]);
+    
     // Update container size and calculate initial zoom
     useEffect(() => {
         const updateSize = () => {
@@ -58,12 +85,24 @@ export function PixelCanvas({
             setContainerSize({ width, height });
             
             // Calculate initial zoom to show defaultZoomPixels in vertical dimension (only once)
-            if (!isInitialized && height > 0) {
+            if (!isInitialized && height > 0 && width > 0) {
                 const initialZoom = height / defaultZoomPixels;
-                setZoom(initialZoom);
+                // Max zoom ensures the entire canvas fits (use smaller ratio)
+                const maxZoom = Math.min(width / maxSize, height / maxSize);
+                const clampedZoom = Math.max(maxZoom, initialZoom);
+                setZoom(clampedZoom);
                 // Center the view at origin (0, 0)
-                setPanX(width / 2);
-                setPanY(height / 2);
+                // When panX = width/2, viewBoxX = -width/(2*zoom), showing center at 0
+                const initialPanX = width / 2;
+                const initialPanY = height / 2;
+                // Clamp to ensure we stay within boundaries
+                const halfSize = maxSize / 2;
+                const minPanX = width - halfSize * clampedZoom;
+                const maxPanX = halfSize * clampedZoom;
+                const minPanY = height - halfSize * clampedZoom;
+                const maxPanY = halfSize * clampedZoom;
+                setPanX(Math.max(minPanX, Math.min(maxPanX, initialPanX)));
+                setPanY(Math.max(minPanY, Math.min(maxPanY, initialPanY)));
                 setIsInitialized(true);
             }
         };
@@ -81,7 +120,17 @@ export function PixelCanvas({
             resizeObserver.disconnect();
             window.removeEventListener("resize", updateSize);
         };
-    }, [defaultZoomPixels, isInitialized]);
+    }, [defaultZoomPixels, isInitialized, maxSize]);
+    
+    // Calculate max zoom to prevent seeing beyond boundaries
+    const calculateMaxZoom = useCallback(() => {
+        if (!containerRef.current) return 100;
+        const containerWidth = containerRef.current.clientWidth || 800;
+        const containerHeight = containerRef.current.clientHeight || 600;
+        // Max zoom should ensure at least one dimension fits the full canvas
+        // Use the smaller ratio to ensure the entire canvas is visible
+        return Math.min(containerWidth / maxSize, containerHeight / maxSize);
+    }, [maxSize]);
     
     // Handle mousewheel zoom
     const handleWheel = useCallback((e: WheelEvent) => {
@@ -95,20 +144,24 @@ export function PixelCanvas({
         
         // Zoom factor
         const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
-        const newZoom = Math.max(0.1, Math.min(100, zoom * zoomFactor));
+        const maxZoom = calculateMaxZoom();
+        const newZoom = Math.max(maxZoom, Math.min(100, zoom * zoomFactor));
         
         // Calculate mouse position in canvas coordinates before zoom
         const canvasX = (mouseX - panX) / zoom;
         const canvasY = (mouseY - panY) / zoom;
         
         // Adjust pan to zoom towards mouse position
-        const newPanX = mouseX - canvasX * newZoom;
-        const newPanY = mouseY - canvasY * newZoom;
+        let newPanX = mouseX - canvasX * newZoom;
+        let newPanY = mouseY - canvasY * newZoom;
+        
+        // Clamp pan to boundaries
+        const clamped = clampPan(newPanX, newPanY, newZoom, rect.width, rect.height);
         
         setZoom(newZoom);
-        setPanX(newPanX);
-        setPanY(newPanY);
-    }, [zoom, panX, panY]);
+        setPanX(clamped.x);
+        setPanY(clamped.y);
+    }, [zoom, panX, panY, clampPan, calculateMaxZoom]);
     
     // Handle middle mouse button pan
     const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -139,11 +192,18 @@ export function PixelCanvas({
     }, []);
     
     const handleMouseMove = useCallback((e: MouseEvent) => {
-        if (!isPanning) return;
+        if (!isPanning || !containerRef.current) return;
         
-        setPanX(e.clientX - panStart.x);
-        setPanY(e.clientY - panStart.y);
-    }, [isPanning, panStart]);
+        const newPanX = e.clientX - panStart.x;
+        const newPanY = e.clientY - panStart.y;
+        
+        // Clamp pan to boundaries
+        const rect = containerRef.current.getBoundingClientRect();
+        const clamped = clampPan(newPanX, newPanY, zoom, rect.width, rect.height);
+        
+        setPanX(clamped.x);
+        setPanY(clamped.y);
+    }, [isPanning, panStart, zoom, clampPan]);
     
     const handleMouseUp = useCallback(() => {
         setIsPanning(false);
@@ -243,6 +303,25 @@ export function PixelCanvas({
                             y2={y}
                             stroke={isAxis ? xAxisColor : gridLineColor}
                             strokeWidth={strokeWidth}
+                        />
+                    );
+                })}
+                
+                {/* Render pixels */}
+                {Object.entries(pixels).map(([key, color]) => {
+                    const [x, y] = key.split(",").map(Number);
+                    // Only render visible pixels
+                    if (x < clampedStartX || x > clampedEndX || y < clampedStartY || y > clampedEndY) {
+                        return null;
+                    }
+                    return (
+                        <rect
+                            key={`pixel-${key}`}
+                            x={x}
+                            y={y}
+                            width={1}
+                            height={1}
+                            fill={color}
                         />
                     );
                 })}
