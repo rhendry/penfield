@@ -101,10 +101,10 @@ export function ToolbeltHelp({
                             initial={{ opacity: 0, y: -10 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ duration: 0.2 }}
-                            className="p-3 rounded-lg border border-primary/30 bg-primary/10 mb-4"
+                            className="px-2 py-1.5 rounded border border-primary/30 bg-primary/10 mb-4 w-fit"
                         >
-                            <div className="flex items-center gap-3">
-                                <ActiveIcon className="w-5 h-5 text-primary flex-shrink-0" />
+                            <div className="flex items-center gap-2.5">
+                                <ActiveIcon className="w-4 h-4 text-primary flex-shrink-0" />
                                 <div className="flex items-center gap-2">
                                     <h3 className="font-semibold text-foreground text-sm">
                                         {activeSlot.tool.name}
@@ -114,7 +114,7 @@ export function ToolbeltHelp({
                                     </KeyboardKey>
                                 </div>
                                 {activeSlot.tool.description && (
-                                    <p className="text-xs text-foreground/90 ml-4 flex-1">
+                                    <p className="text-xs text-foreground/90 ml-2">
                                         {activeSlot.tool.description}
                                     </p>
                                 )}
@@ -135,49 +135,48 @@ export function ToolbeltHelp({
                             <motion.div
                                 key={slot.id}
                                 className={cn(
-                                    "p-2 rounded-lg border transition-all duration-200",
+                                    "px-2 py-1.5 rounded border transition-all duration-200",
+                                    "flex items-center gap-2.5 w-fit",
                                     isActive
                                         ? "border-primary/50 bg-primary/10"
                                         : "border-white/10 bg-background/40 hover:border-white/20 hover:bg-background/60"
                                 )}
                             >
-                                <div className="flex items-center gap-2.5">
-                                    <ToolIcon
+                                <ToolIcon
+                                    className={cn(
+                                        "w-4 h-4 flex-shrink-0",
+                                        isActive
+                                            ? "text-primary"
+                                            : "text-muted-foreground"
+                                    )}
+                                />
+                                <div className="flex items-center gap-2">
+                                    <span
                                         className={cn(
-                                            "w-4 h-4 flex-shrink-0",
+                                            "text-xs font-medium",
                                             isActive
-                                                ? "text-primary"
+                                                ? "text-foreground"
+                                                : "text-foreground/80"
+                                        )}
+                                    >
+                                        {slot.tool!.name}
+                                    </span>
+                                    <KeyboardKey size="sm">
+                                        {slot.hotkey}
+                                    </KeyboardKey>
+                                </div>
+                                {slot.tool!.description && (
+                                    <p
+                                        className={cn(
+                                            "text-xs ml-2",
+                                            isActive
+                                                ? "text-foreground/90"
                                                 : "text-muted-foreground"
                                         )}
-                                    />
-                                    <div className="flex items-center gap-2">
-                                        <span
-                                            className={cn(
-                                                "text-xs font-medium",
-                                                isActive
-                                                    ? "text-foreground"
-                                                    : "text-foreground/80"
-                                            )}
-                                        >
-                                            {slot.tool!.name}
-                                        </span>
-                                        <KeyboardKey size="sm">
-                                            {slot.hotkey}
-                                        </KeyboardKey>
-                                    </div>
-                                    {slot.tool!.description && (
-                                        <p
-                                            className={cn(
-                                                "text-xs ml-3 flex-1",
-                                                isActive
-                                                    ? "text-foreground/90"
-                                                    : "text-muted-foreground"
-                                            )}
-                                        >
-                                            {slot.tool!.description}
-                                        </p>
-                                    )}
-                                </div>
+                                    >
+                                        {slot.tool!.description}
+                                    </p>
+                                )}
                             </motion.div>
                         );
                     })}

@@ -41,7 +41,7 @@ export function HotkeyTip({
                     return (
                         <React.Fragment key={index}>
                             {index > 0 && (
-                                <span className="text-muted-foreground/60 mx-0.5">+</span>
+                                <span className="text-muted-foreground/60 mx-0.5">or</span>
                             )}
                             {isCombo ? (
                                 <span className="flex items-center gap-0.5">
