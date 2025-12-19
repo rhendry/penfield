@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { Plus, Trash2 } from "lucide-react";
 import { PaletteSelector, type Palette } from "./palette-selector";
@@ -70,6 +70,43 @@ export function ColorPalette({
         }
     };
 
+    // Keyboard shortcuts: z = cycle left, x = cycle right
+    const handleKeyDown = useCallback((e: KeyboardEvent) => {
+        // Only handle if not typing in an input
+        if (
+            e.target instanceof HTMLInputElement ||
+            e.target instanceof HTMLTextAreaElement ||
+            e.target instanceof HTMLSelectElement
+        ) {
+            return;
+        }
+
+        if (colors.length === 0) return;
+
+        const currentIndex = colors.findIndex(c => c === selectedColor);
+        
+        if (e.key === "z" || e.key === "Z") {
+            e.preventDefault();
+            const newIndex = currentIndex === -1 
+                ? colors.length - 1 
+                : (currentIndex - 1 + colors.length) % colors.length;
+            onSelectColor(colors[newIndex], paletteId);
+        } else if (e.key === "x" || e.key === "X") {
+            e.preventDefault();
+            const newIndex = currentIndex === -1 
+                ? 0 
+                : (currentIndex + 1) % colors.length;
+            onSelectColor(colors[newIndex], paletteId);
+        }
+    }, [colors, selectedColor, onSelectColor, paletteId]);
+
+    useEffect(() => {
+        window.addEventListener("keydown", handleKeyDown, { capture: true });
+        return () => {
+            window.removeEventListener("keydown", handleKeyDown, { capture: true });
+        };
+    }, [handleKeyDown]);
+
     return (
         <div className={cn("space-y-3", className)}>
             {/* Palette Selector */}
@@ -117,6 +154,17 @@ export function ColorPalette({
                     >
                         Add
                     </button>
+                </div>
+            )}
+
+            {/* Keyboard Shortcuts Helper */}
+            {colors.length > 0 && (
+                <div className="text-xs text-muted-foreground flex items-center gap-2">
+                    <span>Shortcuts:</span>
+                    <kbd className="px-1.5 py-0.5 rounded bg-background/60 border border-white/10 font-mono text-[10px]">Z</kbd>
+                    <span>←</span>
+                    <kbd className="px-1.5 py-0.5 rounded bg-background/60 border border-white/10 font-mono text-[10px]">X</kbd>
+                    <span>→</span>
                 </div>
             )}
 

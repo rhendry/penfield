@@ -165,32 +165,49 @@ export function ColorPicker({
     
     const gradientRef = useRef<HTMLDivElement>(null);
     const hueRef = useRef<HTMLDivElement>(null);
-    const isInternalChangeRef = useRef(false);
     const isInitialMountRef = useRef(true);
+    const lastSentHexRef = useRef<string | null>(null);
 
     // Initialize HSL from hex value (only when external value changes)
     useEffect(() => {
-        if (!isInternalChangeRef.current) {
-            const [r, g, b] = hexToRgb(hexValue);
-            const [h, s, l] = rgbToHsl(r, g, b);
-            setHue(h);
-            setSaturation(s);
-            setLightness(l);
+        // Normalize the incoming hex value for comparison
+        const normalizedHexValue = hexValue.replace("#", "").toLowerCase();
+        
+        // If this matches the last hex we sent via onChange, this is our own update
+        // Skip syncing HSL to avoid infinite loops
+        if (lastSentHexRef.current !== null && normalizedHexValue === lastSentHexRef.current) {
+            return;
         }
-        isInternalChangeRef.current = false;
+        
+        // This is an external change - sync HSL from hex
+        const [r, g, b] = hexToRgb(hexValue);
+        const [h, s, l] = rgbToHsl(r, g, b);
+        setHue(h);
+        setSaturation(s);
+        setLightness(l);
+        // Don't update lastSentHexRef here - only update it when we send via onChange
     }, [hexValue]);
 
     // Update color when HSL changes from user interaction
     useEffect(() => {
         if (isInitialMountRef.current) {
             isInitialMountRef.current = false;
+            // Initialize lastSentHexRef on mount with current hex
+            const [r, g, b] = hslToRgb(hue, saturation, lightness);
+            const hex = rgbToHex(r, g, b);
+            lastSentHexRef.current = hex.replace("#", "").toLowerCase();
             return;
         }
-        isInternalChangeRef.current = true;
+        
         const [r, g, b] = hslToRgb(hue, saturation, lightness);
         const hex = rgbToHex(r, g, b);
         const alphaHex = alphaToHex(alphaValue);
-        onChange(`#${hex.replace("#", "")}${alphaHex}`);
+        const newValue = `#${hex.replace("#", "")}${alphaHex}`;
+        
+        // Update our tracking ref BEFORE calling onChange
+        // This ensures that when the value comes back as a prop, we recognize it as our own
+        lastSentHexRef.current = hex.replace("#", "").toLowerCase();
+        onChange(newValue);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [hue, saturation, lightness, alphaValue]);
 
@@ -335,7 +352,7 @@ export function ColorPicker({
                 </div>
                 
                 {/* Hue Slider */}
-                <div className="mt-2 flex items-center gap-3">
+                <div className="mt-2 flex items-center gap-2 min-w-0">
                     <div
                         ref={hueRef}
                         onClick={handleHueClick}
@@ -355,8 +372,8 @@ export function ColorPicker({
                     </div>
                     
                     {/* Current Color Swatch and Hex Input */}
-                    <div className="flex-1 space-y-2">
-                        <div className="flex items-center gap-2">
+                    <div className="flex-1 space-y-2 min-w-0">
+                        <div className="flex items-center gap-2 min-w-0">
                             <div
                                 className="w-12 h-12 rounded-lg border-2 border-white/20 flex-shrink-0"
                                 style={{ backgroundColor: selectedColor }}
@@ -365,7 +382,7 @@ export function ColorPicker({
                                 type="text"
                                 value={hexValue}
                                 onChange={(e) => handleHexChange(e.target.value)}
-                                className="flex-1 px-3 py-2 rounded-lg border border-white/10 bg-background/40 text-sm font-mono text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                                className="flex-1 min-w-0 px-2 py-2 rounded-lg border border-white/10 bg-background/40 text-xs font-mono text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                                 placeholder="#000000"
                             />
                         </div>
