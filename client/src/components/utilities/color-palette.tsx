@@ -15,6 +15,8 @@ export interface ColorPaletteProps {
     onRemoveColor?: (color: string, paletteId: string) => void;
     onCreatePalette?: () => void;
     maxColors?: number;
+    /** Current color from ColorPicker to use when adding colors */
+    currentPickerColor?: string;
     className?: string;
 }
 
@@ -33,10 +35,9 @@ export function ColorPalette({
     onRemoveColor,
     onCreatePalette,
     maxColors = 20,
+    currentPickerColor,
     className,
 }: ColorPaletteProps) {
-    const [showAddColor, setShowAddColor] = useState(false);
-    const [newColor, setNewColor] = useState("#000000");
     const [columns, setColumns] = useState(6);
     const gridRef = useRef<HTMLDivElement>(null);
 
@@ -64,10 +65,26 @@ export function ColorPalette({
     }, []);
 
     const handleAddColor = () => {
-        if (onAddColor && newColor && !colors.includes(newColor) && colors.length < maxColors) {
-            onAddColor(newColor, paletteId);
-            setNewColor("#000000");
-            setShowAddColor(false);
+        // Use currentPickerColor if provided, otherwise fall back to selectedColor
+        const colorToAdd = currentPickerColor || selectedColor;
+        
+        // Normalize color format - ensure it has alpha (add ff if missing)
+        let normalizedColor = colorToAdd;
+        if (normalizedColor.startsWith("#")) {
+            if (normalizedColor.length === 7) {
+                // RGB format, add alpha
+                normalizedColor = normalizedColor + "ff";
+            } else if (normalizedColor.length === 4) {
+                // Short format (#RGB), expand and add alpha
+                normalizedColor = "#" + normalizedColor.slice(1).split("").map(c => c + c).join("") + "ff";
+            }
+        }
+        
+        // Check if exact color (including alpha) already exists
+        const colorExists = colors.includes(normalizedColor);
+        
+        if (onAddColor && normalizedColor && !colorExists && colors.length < maxColors) {
+            onAddColor(normalizedColor, paletteId);
         }
     };
 
@@ -84,7 +101,13 @@ export function ColorPalette({
 
         if (colors.length === 0) return;
 
-        const currentIndex = colors.findIndex(c => c === selectedColor);
+        // Normalize selectedColor for comparison - ensure both have same format
+        const normalizeColor = (c: string) => {
+            if (c.length === 7) return c + "ff";
+            return c;
+        };
+        const normalizedSelected = normalizeColor(selectedColor);
+        const currentIndex = colors.findIndex(c => normalizeColor(c) === normalizedSelected);
         
         if (e.key === "z" || e.key === "Z") {
             e.preventDefault();
@@ -124,38 +147,13 @@ export function ColorPalette({
             {/* Add Color Button */}
             {onAddColor && colors.length < maxColors && (
                 <button
-                    onClick={() => setShowAddColor(!showAddColor)}
+                    onClick={handleAddColor}
                     className="w-full px-3 py-2 rounded-lg border border-white/10 hover:bg-background/60 transition-colors flex items-center justify-center gap-2 text-sm text-muted-foreground hover:text-foreground"
-                    title="Add color"
+                    title="Add current color from picker to palette"
                 >
                     <Plus size={14} />
                     <span>Add Color</span>
                 </button>
-            )}
-
-            {/* Add Color Input */}
-            {showAddColor && onAddColor && (
-                <div className="flex items-center gap-2 p-2 rounded-lg border border-white/10 bg-background/40">
-                    <input
-                        type="color"
-                        value={newColor}
-                        onChange={(e) => setNewColor(e.target.value)}
-                        className="w-8 h-8 rounded border border-white/20 cursor-pointer"
-                    />
-                    <input
-                        type="text"
-                        value={newColor}
-                        onChange={(e) => setNewColor(e.target.value)}
-                        className="flex-1 px-2 py-1 rounded border border-white/10 bg-background text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                        placeholder="#000000"
-                    />
-                    <button
-                        onClick={handleAddColor}
-                        className="px-2 py-1 rounded bg-primary text-primary-foreground text-xs hover:bg-primary/90 transition-colors"
-                    >
-                        Add
-                    </button>
-                </div>
             )}
 
             {/* Keyboard Shortcuts Helper */}
@@ -177,13 +175,24 @@ export function ColorPalette({
                 }}
             >
                 {colors.map((color, index) => {
-                    const isSelected = color === selectedColor;
+                    // Normalize colors for comparison - ensure both have same format
+                    const normalizeColor = (c: string) => {
+                        if (c.length === 7) return c + "ff";
+                        return c;
+                    };
+                    const normalizedColor = normalizeColor(color);
+                    const normalizedSelected = normalizeColor(selectedColor);
+                    const isSelected = normalizedColor === normalizedSelected;
+                    
+                    // Ensure color has alpha for display (add ff if missing)
+                    const displayColor = color.length === 7 ? color + "ff" : color;
+                    
                     return (
                         <div key={index} className="relative group">
                             <button
                                 onClick={() => onSelectColor(color, paletteId)}
                                 className={cn(
-                                    "rounded-lg border-2 transition-all",
+                                    "rounded-lg border-2 transition-all relative overflow-hidden",
                                     "hover:scale-110",
                                     isSelected
                                         ? "border-primary shadow-[0_0_8px_rgba(var(--primary),0.5)] scale-110"
@@ -192,10 +201,31 @@ export function ColorPalette({
                                 style={{
                                     width: `${SWATCH_SIZE}px`,
                                     height: `${SWATCH_SIZE}px`,
-                                    backgroundColor: color,
                                 }}
                                 title={color}
-                            />
+                            >
+                                {/* Checkerboard background for transparency */}
+                                <div
+                                    className="absolute inset-0"
+                                    style={{
+                                        backgroundImage: `
+                                            linear-gradient(45deg, #808080 25%, transparent 25%),
+                                            linear-gradient(-45deg, #808080 25%, transparent 25%),
+                                            linear-gradient(45deg, transparent 75%, #808080 75%),
+                                            linear-gradient(-45deg, transparent 75%, #808080 75%)
+                                        `,
+                                        backgroundSize: "8px 8px",
+                                        backgroundPosition: "0 0, 0 4px, 4px -4px, -4px 0px",
+                                    }}
+                                />
+                                {/* Color overlay */}
+                                <div
+                                    className="absolute inset-0"
+                                    style={{
+                                        backgroundColor: displayColor,
+                                    }}
+                                />
+                            </button>
                             {onRemoveColor && (
                                 <button
                                     onClick={(e) => {

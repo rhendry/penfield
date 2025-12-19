@@ -132,10 +132,13 @@ function InteractiveToolbelt({
                                     paletteId={selectedPaletteId}
                                     palettes={palettes}
                                     colors={paletteColors}
-                                    selectedColor={pencilColor.replace(/ff$/, "")}
+                                    selectedColor={pencilColor}
+                                    currentPickerColor={pencilColor}
                                     onSelectPalette={setSelectedPaletteId}
                                     onSelectColor={(color, paletteId) => {
-                                        setPencilColor(color + "ff");
+                                        // Ensure color has alpha
+                                        const colorWithAlpha = color.length === 7 ? color + "ff" : color;
+                                        setPencilColor(colorWithAlpha);
                                         console.log("Selected color:", color, "from palette:", paletteId);
                                     }}
                                     onAddColor={(color, paletteId) => {

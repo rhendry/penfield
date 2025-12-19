@@ -149,10 +149,13 @@ export const Interactive: Story = {
                             paletteId={selectedPaletteId}
                             palettes={palettes}
                             colors={paletteColors}
-                            selectedColor={color.replace(/ff$/, "")}
+                            selectedColor={color}
+                            currentPickerColor={color}
                             onSelectPalette={setSelectedPaletteId}
                             onSelectColor={(c, pid) => {
-                                setColor(c + "ff");
+                                // Ensure color has alpha
+                                const colorWithAlpha = c.length === 7 ? c + "ff" : c;
+                                setColor(colorWithAlpha);
                                 console.log("Selected color:", c, "from palette:", pid);
                             }}
                             onAddColor={(c, pid) => {

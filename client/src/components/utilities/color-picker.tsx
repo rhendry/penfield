@@ -375,9 +375,30 @@ export function ColorPicker({
                     <div className="flex-1 space-y-2 min-w-0">
                         <div className="flex items-center gap-2 min-w-0">
                             <div
-                                className="w-12 h-12 rounded-lg border-2 border-white/20 flex-shrink-0"
-                                style={{ backgroundColor: selectedColor }}
-                            />
+                                className="w-12 h-12 rounded-lg border-2 border-white/20 flex-shrink-0 relative overflow-hidden"
+                            >
+                                {/* Checkerboard background for transparency */}
+                                <div
+                                    className="absolute inset-0"
+                                    style={{
+                                        backgroundImage: `
+                                            linear-gradient(45deg, #808080 25%, transparent 25%),
+                                            linear-gradient(-45deg, #808080 25%, transparent 25%),
+                                            linear-gradient(45deg, transparent 75%, #808080 75%),
+                                            linear-gradient(-45deg, transparent 75%, #808080 75%)
+                                        `,
+                                        backgroundSize: "8px 8px",
+                                        backgroundPosition: "0 0, 0 4px, 4px -4px, -4px 0px",
+                                    }}
+                                />
+                                {/* Color overlay */}
+                                <div
+                                    className="absolute inset-0"
+                                    style={{
+                                        backgroundColor: rgbaValue,
+                                    }}
+                                />
+                            </div>
                             <input
                                 type="text"
                                 value={hexValue}
