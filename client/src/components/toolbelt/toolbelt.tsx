@@ -11,6 +11,7 @@ export function Toolbelt({
     className,
     keyboardEnabled = true,
     config = { rows: 3, cols: 4 },
+    selectedToolId,
 }: ToolbeltProps) {
     useKeyboardHotkeys({
         enabled: keyboardEnabled,
@@ -24,7 +25,7 @@ export function Toolbelt({
             animate={{ y: 0, opacity: 1 }}
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
             className={cn(
-                "fixed bottom-8 left-8 p-3 rounded-2xl border backdrop-blur-xl shadow-2xl z-40",
+                "fixed bottom-8 left-8 p-2 rounded-2xl border backdrop-blur-xl shadow-2xl z-40",
                 "border-white/10 bg-black/40",
                 className
             )}
@@ -36,6 +37,7 @@ export function Toolbelt({
                 renderItem={(slot) => (
                     <ToolSlot
                         {...slot}
+                        isActive={selectedToolId === slot.tool?.id}
                         onClick={() => onSlotClick(slot.id)}
                     />
                 )}

@@ -20,6 +20,9 @@ import {
     quickSelectSlots,
     type QuickSelectSlot,
     type InsertQuickSelectSlot,
+    colorPalettes,
+    type ColorPalette,
+    type InsertColorPalette,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc } from "drizzle-orm";
@@ -67,6 +70,15 @@ export interface IStorage {
     addQuickSelectSlot_async(userId: number, slot: InsertQuickSelectSlot): Promise<QuickSelectSlot>;
     removeQuickSelectSlot_async(id: number): Promise<void>;
     updateQuickSelectSlotPosition_async(id: number, position: number): Promise<QuickSelectSlot>;
+
+    // Color Palettes
+    getPalettes_async(userId: number): Promise<ColorPalette[]>;
+    getPalette_async(id: number): Promise<ColorPalette | undefined>;
+    createPalette_async(userId: number, palette: InsertColorPalette): Promise<ColorPalette>;
+    updatePalette_async(id: number, palette: Partial<InsertColorPalette>): Promise<ColorPalette>;
+    deletePalette_async(id: number): Promise<void>;
+    addPaletteColor_async(id: number, color: string): Promise<ColorPalette>;
+    removePaletteColor_async(id: number, colorIndex: number): Promise<ColorPalette>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -262,6 +274,67 @@ export class DatabaseStorage implements IStorage {
             .where(eq(quickSelectSlots.id, id))
             .returning();
         return slot;
+    }
+
+    // Color Palettes
+    async getPalettes_async(userId: number): Promise<ColorPalette[]> {
+        return await db
+            .select()
+            .from(colorPalettes)
+            .where(eq(colorPalettes.userId, userId))
+            .orderBy(desc(colorPalettes.updatedAt));
+    }
+
+    async getPalette_async(id: number): Promise<ColorPalette | undefined> {
+        const [palette] = await db
+            .select()
+            .from(colorPalettes)
+            .where(eq(colorPalettes.id, id));
+        return palette;
+    }
+
+    async createPalette_async(userId: number, insertPalette: InsertColorPalette): Promise<ColorPalette> {
+        const [palette] = await db
+            .insert(colorPalettes)
+            .values({ ...insertPalette, userId })
+            .returning();
+        return palette;
+    }
+
+    async updatePalette_async(id: number, paletteUpdate: Partial<InsertColorPalette>): Promise<ColorPalette> {
+        const [palette] = await db
+            .update(colorPalettes)
+            .set({ ...paletteUpdate, updatedAt: new Date() })
+            .where(eq(colorPalettes.id, id))
+            .returning();
+        return palette;
+    }
+
+    async deletePalette_async(id: number): Promise<void> {
+        await db.delete(colorPalettes).where(eq(colorPalettes.id, id));
+    }
+
+    async addPaletteColor_async(id: number, color: string): Promise<ColorPalette> {
+        const palette = await this.getPalette_async(id);
+        if (!palette) {
+            throw new Error("Palette not found");
+        }
+        const colors = (palette.colors as string[]) || [];
+        const updatedColors = [...colors, color];
+        return await this.updatePalette_async(id, { colors: updatedColors });
+    }
+
+    async removePaletteColor_async(id: number, colorIndex: number): Promise<ColorPalette> {
+        const palette = await this.getPalette_async(id);
+        if (!palette) {
+            throw new Error("Palette not found");
+        }
+        const colors = (palette.colors as string[]) || [];
+        if (colorIndex < 0 || colorIndex >= colors.length) {
+            throw new Error("Invalid color index");
+        }
+        const updatedColors = colors.filter((_, i) => i !== colorIndex);
+        return await this.updatePalette_async(id, { colors: updatedColors });
     }
 }
 

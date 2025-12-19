@@ -1,137 +1,191 @@
-import { useEffect, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Loader2, Save } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { PixelCanvas } from "./pixel-canvas";
+import { Tool } from "@/components/toolbelt/types";
+import { getTool, ToolContext } from "@/tools";
+import { PEN_TOOL, ERASER_TOOL, FILL_TOOL } from "./pixel-editor-tools";
 
 interface PixelEditorProps {
     initialContent: any;
-    onSave: (content: any) => Promise<void>;
+    selectedTool: Tool | null;
+    leftClickColor: string;
+    rightClickColor: string;
+    onPixelsChange: (pixels: Record<string, string>) => void;
+    className?: string;
 }
 
-export function PixelEditor({ initialContent, onSave }: PixelEditorProps) {
-    const canvasRef = useRef<HTMLCanvasElement>(null);
-    const [isSaving, setIsSaving] = useState(false);
-    const { toast } = useToast();
+/**
+ * Flood fill algorithm - fills connected pixels of the same color
+ */
+function floodFill(
+    pixels: Record<string, string>,
+    startX: number,
+    startY: number,
+    fillColor: string,
+    maxSize: number
+): Record<string, string> {
+    const halfSize = maxSize / 2;
+    const startKey = `${startX},${startY}`;
+    const targetColor = pixels[startKey] || null;
+    
+    // If target color is same as fill color, no need to fill
+    if (targetColor === fillColor) {
+        return pixels;
+    }
+    
+    const newPixels = { ...pixels };
+    const visited = new Set<string>();
+    const queue: Array<[number, number]> = [[startX, startY]];
+    
+    while (queue.length > 0) {
+        const [x, y] = queue.shift()!;
+        const key = `${x},${y}`;
+        
+        // Check bounds
+        if (x < -halfSize || x >= halfSize || y < -halfSize || y >= halfSize) {
+            continue;
+        }
+        
+        // Skip if already visited
+        if (visited.has(key)) {
+            continue;
+        }
+        
+        // Check if this pixel matches the target color
+        const currentColor = newPixels[key] || null;
+        if (currentColor !== targetColor) {
+            continue;
+        }
+        
+        // Mark as visited and fill
+        visited.add(key);
+        newPixels[key] = fillColor;
+        
+        // Add neighbors to queue (4-directional)
+        queue.push([x + 1, y]);
+        queue.push([x - 1, y]);
+        queue.push([x, y + 1]);
+        queue.push([x, y - 1]);
+    }
+    
+    return newPixels;
+}
 
-    // Basic state: grid of colors. Key: "x,y", Value: color string
-    const [grid, setGrid] = useState<Record<string, string>>(initialContent?.grid || {});
-    const [color, setColor] = useState("#000000");
-    const [isDrawing, setIsDrawing] = useState(false);
-
-    const PIXEL_SIZE = 20;
-    const CANVAS_SIZE = 600; // 30x30 grid
-
+export function PixelEditor({
+    initialContent,
+    selectedTool,
+    leftClickColor,
+    rightClickColor,
+    onPixelsChange,
+    className,
+}: PixelEditorProps) {
+    // Pixel data: key is "x,y", value is color string
+    const [pixels, setPixels] = useState<Record<string, string>>(
+        initialContent?.grid || {}
+    );
+    
+    // Track last drawn pixel for straight line drawing
+    const lastDrawnPixelRef = useRef<{ x: number; y: number } | null>(null);
+    const isShiftPressedRef = useRef(false);
+    const maxSize = 1000;
+    
+    // Update parent when pixels change (use ref to avoid infinite loop)
+    const onPixelsChangeRef = useRef(onPixelsChange);
     useEffect(() => {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-
-        // Clear canvas
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-
-        // Draw grid
-        ctx.strokeStyle = "#e5e5e5";
-        ctx.lineWidth = 1;
-        for (let i = 0; i <= CANVAS_SIZE; i += PIXEL_SIZE) {
-            ctx.beginPath();
-            ctx.moveTo(i, 0);
-            ctx.lineTo(i, CANVAS_SIZE);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(0, i);
-            ctx.lineTo(CANVAS_SIZE, i);
-            ctx.stroke();
+        onPixelsChangeRef.current = onPixelsChange;
+    }, [onPixelsChange]);
+    
+    useEffect(() => {
+        onPixelsChangeRef.current(pixels);
+    }, [pixels]);
+    
+    // Handle keyboard for Shift key
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Shift") {
+                isShiftPressedRef.current = true;
+            }
+        };
+        
+        const handleKeyUp = (e: KeyboardEvent) => {
+            if (e.key === "Shift") {
+                isShiftPressedRef.current = false;
+                lastDrawnPixelRef.current = null;
+            }
+        };
+        
+        window.addEventListener("keydown", handleKeyDown);
+        window.addEventListener("keyup", handleKeyUp);
+        
+        return () => {
+            window.removeEventListener("keydown", handleKeyDown);
+            window.removeEventListener("keyup", handleKeyUp);
+        };
+    }, []);
+    
+    // Create tool context
+    const createToolContext = useCallback((): ToolContext => {
+        return {
+            pixels,
+            maxSize,
+            leftClickColor,
+            rightClickColor,
+            isShiftPressed: isShiftPressedRef.current,
+            lastDrawnPixel: lastDrawnPixelRef.current,
+        };
+    }, [pixels, leftClickColor, rightClickColor]);
+    
+    // Handle pixel click
+    const handlePixelClick = useCallback((x: number, y: number, button: "left" | "right") => {
+        if (!selectedTool) return;
+        
+        const toolId = selectedTool.id;
+        
+        // Try to get tool from library first
+        const libraryTool = getTool(toolId);
+        if (libraryTool) {
+            const context = createToolContext();
+            const result = libraryTool.onPixelClick(x, y, button, context);
+            setPixels(result.pixels);
+            if (result.lastDrawnPixel !== undefined) {
+                lastDrawnPixelRef.current = result.lastDrawnPixel;
+            }
+            return;
         }
-
-        // Draw pixels
-        Object.entries(grid).forEach(([key, color]) => {
-            const [x, y] = key.split(",").map(Number);
-            ctx.fillStyle = color;
-            ctx.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
-        });
-    }, [grid]);
-
-    const handleMouseDown = (e: React.MouseEvent) => {
-        setIsDrawing(true);
-        draw(e);
-    };
-
-    const handleMouseMove = (e: React.MouseEvent) => {
-        if (!isDrawing) return;
-        draw(e);
-    };
-
-    const handleMouseUp = () => {
-        setIsDrawing(false);
-    };
-
-    const draw = (e: React.MouseEvent) => {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-
-        const rect = canvas.getBoundingClientRect();
-        const x = Math.floor((e.clientX - rect.left) / PIXEL_SIZE);
-        const y = Math.floor((e.clientY - rect.top) / PIXEL_SIZE);
-
-        if (x >= 0 && x < CANVAS_SIZE / PIXEL_SIZE && y >= 0 && y < CANVAS_SIZE / PIXEL_SIZE) {
-            setGrid((prev) => ({
-                ...prev,
-                [`${x},${y}`]: color,
-            }));
+        
+        // Fallback to legacy tools (Fill tool)
+        if (toolId === "fill") {
+            const color = button === "left" ? leftClickColor : rightClickColor;
+            setPixels((prev) => floodFill(prev, x, y, color, maxSize));
         }
-    };
-
-    const handleSave = async () => {
-        setIsSaving(true);
-        try {
-            await onSave({ grid });
-            toast({
-                title: "Saved",
-                description: "Your artwork has been saved.",
-            });
-        } catch (error) {
-            toast({
-                title: "Error",
-                description: "Failed to save artwork.",
-                variant: "destructive",
-            });
-        } finally {
-            setIsSaving(false);
+    }, [selectedTool, createToolContext, leftClickColor, rightClickColor]);
+    
+    // Handle pixel drag
+    const handlePixelDrag = useCallback((x: number, y: number, button: "left" | "right") => {
+        if (!selectedTool) return;
+        
+        const toolId = selectedTool.id;
+        
+        // Try to get tool from library first
+        const libraryTool = getTool(toolId);
+        if (libraryTool) {
+            const context = createToolContext();
+            const result = libraryTool.onPixelDrag(x, y, button, context);
+            setPixels(result.pixels);
+            if (result.lastDrawnPixel !== undefined) {
+                lastDrawnPixelRef.current = result.lastDrawnPixel;
+            }
+            return;
         }
-    };
-
+        
+        // Fallback to legacy tools (Fill tool doesn't support drag)
+    }, [selectedTool, createToolContext]);
+    
     return (
-        <div className="flex flex-col items-center gap-4">
-            <div className="flex gap-4 items-center mb-4">
-                <input
-                    type="color"
-                    value={color}
-                    onChange={(e) => setColor(e.target.value)}
-                    className="h-10 w-10 cursor-pointer"
-                />
-                <Button onClick={handleSave} disabled={isSaving}>
-                    {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    <Save className="mr-2 h-4 w-4" />
-                    Save
-                </Button>
-            </div>
-            <div className="border rounded-lg shadow-sm overflow-hidden">
-                <canvas
-                    ref={canvasRef}
-                    width={CANVAS_SIZE}
-                    height={CANVAS_SIZE}
-                    onMouseDown={handleMouseDown}
-                    onMouseMove={handleMouseMove}
-                    onMouseUp={handleMouseUp}
-                    onMouseLeave={handleMouseUp}
-                    className="cursor-crosshair"
-                />
-            </div>
-            <p className="text-sm text-muted-foreground">
-                Click and drag to draw. Select color above.
-            </p>
-        </div>
+        <PixelCanvas
+            pixels={pixels}
+            onPixelClick={handlePixelClick}
+            onPixelDrag={handlePixelDrag}
+            className={className}
+        />
     );
 }

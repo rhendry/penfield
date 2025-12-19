@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { hashPassword, comparePasswords } from "./auth";
 import { insertUserSchema, insertProjectSchema, insertAssetSchema } from "@shared/schema";
 import { registerToolkitRoutes } from "./toolkit-routes";
+import { registerPaletteRoutes } from "./palette-routes";
 
 export async function registerRoutes(app: Express): Promise<Server> {
     // Auth Routes
@@ -197,6 +198,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     // Toolkit Routes
     registerToolkitRoutes(app);
+
+    // Palette Routes
+    registerPaletteRoutes(app);
 
     const httpServer = createServer(app);
     return httpServer;

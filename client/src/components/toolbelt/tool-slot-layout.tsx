@@ -49,7 +49,7 @@ function groupItemsByRow<T>(
     config: Required<ToolbeltConfig>
 ): Array<T[]> {
     const rows: Array<T[]> = [];
-    
+
     // Initialize rows based on config
     for (let i = 0; i < config.rows; i++) {
         rows.push([]);
@@ -78,9 +78,9 @@ function groupItemsByRow<T>(
             const bKey = getHotkey(b).toUpperCase();
             const aRowIndex = validKeysPerRow.findIndex((keys) => keys.includes(aKey));
             const bRowIndex = validKeysPerRow.findIndex((keys) => keys.includes(bKey));
-            
+
             if (aRowIndex !== bRowIndex) return aRowIndex - bRowIndex;
-            
+
             const aKeyIndex = validKeysPerRow[aRowIndex].indexOf(aKey);
             const bKeyIndex = validKeysPerRow[bRowIndex].indexOf(bKey);
             return aKeyIndex - bKeyIndex;
@@ -111,11 +111,11 @@ export function ToolSlotLayout<T>({
     const rows = groupItemsByRow(items, getHotkey, normalizedConfig);
 
     return (
-        <div className={cn("flex flex-col gap-3", className)}>
+        <div className={cn("flex flex-col gap-2", className)}>
             {rows.map((row, rowIndex) => (
                 <div
                     key={rowIndex}
-                    className={cn("flex gap-3", ROW_OFFSETS[rowIndex])}
+                    className={cn("flex gap-2", ROW_OFFSETS[rowIndex])}
                 >
                     {row.map((item) => (
                         <div key={getId(item)}>

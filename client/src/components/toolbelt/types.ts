@@ -51,6 +51,10 @@ export interface ToolbeltProps {
      * Configuration for toolbelt layout. Defaults to 3 rows, 4 cols.
      */
     config?: ToolbeltConfig;
+    /**
+     * ID of the currently selected tool (for highlighting active slot)
+     */
+    selectedToolId?: string;
 }
 
 export interface ToolSlotProps extends ToolbeltSlot {

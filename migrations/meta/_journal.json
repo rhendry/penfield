@@ -22,6 +22,13 @@
       "when": 1765852822820,
       "tag": "0002_living_magik",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1766115418549,
+      "tag": "0003_damp_daredevil",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,4 @@
-import { LucideIcon } from "lucide-react";
+import { LucideIcon, PenTool, Eraser, PaintBucket } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
 
@@ -8,9 +8,14 @@ const LUCIDE_ICON_REGISTRY: Record<string, LucideIcon> = {};
 /**
  * Register a Lucide icon manually. Useful for pre-loading common icons.
  */
-export function registerLucideIcon(iconName: string, icon: LucideIcon): void {
+function registerLucideIcon(iconName: string, icon: LucideIcon): void {
     LUCIDE_ICON_REGISTRY[iconName] = icon;
 }
+
+// Pre-register common icons
+registerLucideIcon("PenTool", PenTool);
+registerLucideIcon("Eraser", Eraser);
+registerLucideIcon("PaintBucket", PaintBucket);
 
 /**
  * Register multiple Lucide icons at once.
@@ -30,8 +35,8 @@ async function loadLucideIcon(iconName: string): Promise<LucideIcon | null> {
         // Try to dynamically import from lucide-react
         // Note: This requires the icon name to match the export name exactly
         const lucideModule = await import("lucide-react");
-        const IconComponent = (lucideModule as Record<string, LucideIcon>)[iconName];
-        
+        const IconComponent = (lucideModule as any)[iconName] as LucideIcon | undefined;
+
         if (IconComponent && typeof IconComponent === "function") {
             LUCIDE_ICON_REGISTRY[iconName] = IconComponent;
             return IconComponent;

@@ -16,6 +16,10 @@ export interface PixelCanvasProps {
     yAxisColor?: string;
     /** Pixel data: key is "x,y", value is color string */
     pixels?: Record<string, string>;
+    /** Callback when a pixel is clicked */
+    onPixelClick?: (x: number, y: number, button: "left" | "right") => void;
+    /** Callback when dragging over pixels */
+    onPixelDrag?: (x: number, y: number, button: "left" | "right") => void;
     /** Additional className */
     className?: string;
 }
@@ -32,6 +36,8 @@ export function PixelCanvas({
     xAxisColor = "#3b82f6",
     yAxisColor = "#3b82f6",
     pixels = {},
+    onPixelClick,
+    onPixelDrag,
     className,
 }: PixelCanvasProps) {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -48,6 +54,10 @@ export function PixelCanvas({
     // Pan state
     const [isPanning, setIsPanning] = useState(false);
     const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+    
+    // Drawing state
+    const [isDrawing, setIsDrawing] = useState(false);
+    const [drawButton, setDrawButton] = useState<"left" | "right" | null>(null);
     
     // Track if we've initialized
     const [isInitialized, setIsInitialized] = useState(false);
@@ -158,14 +168,48 @@ export function PixelCanvas({
         // Clamp pan to boundaries
         const clamped = clampPan(newPanX, newPanY, newZoom, rect.width, rect.height);
         
-        setZoom(newZoom);
-        setPanX(clamped.x);
-        setPanY(clamped.y);
+        // If clamping changed the pan significantly, try to maintain center instead
+        const panChangedX = Math.abs(clamped.x - newPanX) > 1;
+        const panChangedY = Math.abs(clamped.y - newPanY) > 1;
+        
+        if (panChangedX || panChangedY) {
+            // Try to keep center of view stable
+            const centerX = rect.width / 2;
+            const centerY = rect.height / 2;
+            const centerCanvasX = (-panX + centerX) / zoom;
+            const centerCanvasY = (-panY + centerY) / zoom;
+            
+            // Calculate pan to keep center at same canvas position
+            const centeredPanX = centerX - centerCanvasX * newZoom;
+            const centeredPanY = centerY - centerCanvasY * newZoom;
+            
+            // Clamp the centered pan
+            const centeredClamped = clampPan(centeredPanX, centeredPanY, newZoom, rect.width, rect.height);
+            
+            setZoom(newZoom);
+            setPanX(centeredClamped.x);
+            setPanY(centeredClamped.y);
+        } else {
+            setZoom(newZoom);
+            setPanX(clamped.x);
+            setPanY(clamped.y);
+        }
     }, [zoom, panX, panY, clampPan, calculateMaxZoom]);
     
-    // Handle middle mouse button pan
+    // Convert screen coordinates to canvas coordinates
+    const screenToCanvas = useCallback((screenX: number, screenY: number): { x: number; y: number } | null => {
+        if (!containerRef.current) return null;
+        const rect = containerRef.current.getBoundingClientRect();
+        const mouseX = screenX - rect.left;
+        const mouseY = screenY - rect.top;
+        const canvasX = Math.floor((-panX + mouseX) / zoom);
+        const canvasY = Math.floor((-panY + mouseY) / zoom);
+        return { x: canvasX, y: canvasY };
+    }, [panX, panY, zoom]);
+
+    // Handle mouse down (middle button for pan, left/right for drawing)
     const handleMouseDown = useCallback((e: React.MouseEvent) => {
-        if (e.button === 1) { // Middle mouse button
+        if (e.button === 1) { // Middle mouse button - pan
             e.preventDefault();
             e.stopPropagation();
             setIsPanning(true);
@@ -173,8 +217,19 @@ export function PixelCanvas({
                 x: e.clientX - panX,
                 y: e.clientY - panY,
             });
+        } else if (e.button === 0 || e.button === 2) { // Left or right button - drawing
+            e.preventDefault();
+            e.stopPropagation();
+            const button = e.button === 0 ? "left" : "right";
+            setIsDrawing(true);
+            setDrawButton(button);
+            
+            const coords = screenToCanvas(e.clientX, e.clientY);
+            if (coords && onPixelClick) {
+                onPixelClick(coords.x, coords.y, button);
+            }
         }
-    }, [panX, panY]);
+    }, [panX, panY, screenToCanvas, onPixelClick]);
     
     // Prevent middle mouse button scroll
     useEffect(() => {
@@ -192,21 +247,28 @@ export function PixelCanvas({
     }, []);
     
     const handleMouseMove = useCallback((e: MouseEvent) => {
-        if (!isPanning || !containerRef.current) return;
-        
-        const newPanX = e.clientX - panStart.x;
-        const newPanY = e.clientY - panStart.y;
-        
-        // Clamp pan to boundaries
-        const rect = containerRef.current.getBoundingClientRect();
-        const clamped = clampPan(newPanX, newPanY, zoom, rect.width, rect.height);
-        
-        setPanX(clamped.x);
-        setPanY(clamped.y);
-    }, [isPanning, panStart, zoom, clampPan]);
+        if (isPanning && containerRef.current) {
+            const newPanX = e.clientX - panStart.x;
+            const newPanY = e.clientY - panStart.y;
+            
+            // Clamp pan to boundaries
+            const rect = containerRef.current.getBoundingClientRect();
+            const clamped = clampPan(newPanX, newPanY, zoom, rect.width, rect.height);
+            
+            setPanX(clamped.x);
+            setPanY(clamped.y);
+        } else if (isDrawing && drawButton && onPixelDrag) {
+            const coords = screenToCanvas(e.clientX, e.clientY);
+            if (coords) {
+                onPixelDrag(coords.x, coords.y, drawButton);
+            }
+        }
+    }, [isPanning, panStart, zoom, clampPan, isDrawing, drawButton, onPixelDrag, screenToCanvas]);
     
     const handleMouseUp = useCallback(() => {
         setIsPanning(false);
+        setIsDrawing(false);
+        setDrawButton(null);
     }, []);
     
     // Set up event listeners
@@ -259,7 +321,7 @@ export function PixelCanvas({
             className={cn("w-full h-full overflow-hidden relative", className)}
             style={{ backgroundColor, width: "100%", height: "100%" }}
             onMouseDown={handleMouseDown}
-            onContextMenu={(e) => e.preventDefault()} // Prevent context menu on middle click
+            onContextMenu={(e) => e.preventDefault()} // Prevent context menu on right click
         >
             <svg
                 ref={svgRef}

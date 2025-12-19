@@ -102,6 +102,15 @@ export const quickSelectSlots = pgTable("quick_select_slots", {
     createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const colorPalettes = pgTable("color_palettes", {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id").notNull(), // .references(() => users.id)
+    name: text("name").notNull(),
+    colors: jsonb("colors").notNull().default([]), // Array of color strings (RGBA hex)
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Zod schemas
 export const insertToolkitSchema = createInsertSchema(toolkits).pick({
     name: true,
@@ -134,6 +143,11 @@ export const insertQuickSelectSlotSchema = createInsertSchema(quickSelectSlots).
     position: true,
 });
 
+export const insertColorPaletteSchema = createInsertSchema(colorPalettes).pick({
+    name: true,
+    colors: true,
+});
+
 // TypeScript types
 export type Toolkit = typeof toolkits.$inferSelect;
 export type InsertToolkit = z.infer<typeof insertToolkitSchema>;
@@ -146,3 +160,6 @@ export type InsertToolbelt = z.infer<typeof insertToolbeltSchema>;
 
 export type QuickSelectSlot = typeof quickSelectSlots.$inferSelect;
 export type InsertQuickSelectSlot = z.infer<typeof insertQuickSelectSlotSchema>;
+
+export type ColorPalette = typeof colorPalettes.$inferSelect;
+export type InsertColorPalette = z.infer<typeof insertColorPaletteSchema>;

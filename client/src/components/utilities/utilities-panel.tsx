@@ -1,4 +1,5 @@
-import React, { ReactNode, useState, useRef, useEffect, Children, isValidElement } from "react";
+import { useState, useRef, useEffect, Children, isValidElement, Fragment } from "react";
+import type { ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { ChevronRight, ChevronLeft } from "lucide-react";
@@ -35,27 +36,27 @@ export function UtilitiesPanel({
     const [internalWidth, setInternalWidth] = useState(controlledWidth);
     const width = onWidthChange ? controlledWidth : internalWidth;
     const setWidth = onWidthChange || setInternalWidth;
-    
+
     const resizeRef = useRef<HTMLDivElement>(null);
     const isResizingRef = useRef(false);
 
     // Get utilities for the selected tool
     const utilities = selectedTool ? getToolUtilities(selectedTool) : undefined;
-    
+
     // Normalize utilities to array, extracting children from fragments
     const utilitiesArray = utilities
         ? Array.isArray(utilities)
             ? utilities.flatMap(util => {
                 // If it's a fragment, extract its children
-                if (isValidElement(util) && util.type === React.Fragment) {
-                    return Children.toArray(util.props.children);
+                if (isValidElement(util) && util.type === Fragment) {
+                    return Children.toArray((util.props as { children?: ReactNode }).children);
                 }
                 return [util];
             })
             : (() => {
                 // If it's a fragment, extract its children
-                if (isValidElement(utilities) && utilities.type === React.Fragment) {
-                    return Children.toArray(utilities.props.children);
+                if (isValidElement(utilities) && utilities.type === Fragment) {
+                    return Children.toArray((utilities.props as { children?: ReactNode }).children);
                 }
                 return [utilities];
             })()
@@ -74,7 +75,7 @@ export function UtilitiesPanel({
 
         const handleMouseMove = (e: MouseEvent) => {
             if (!isResizingRef.current) return;
-            
+
             const newWidth = window.innerWidth - e.clientX;
             const clampedWidth = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, newWidth));
             setWidth(clampedWidth);
@@ -139,7 +140,7 @@ export function UtilitiesPanel({
                         exit={{ x: width }}
                         transition={{ type: "spring", stiffness: 300, damping: 30 }}
                         className={cn(
-                            "fixed right-0 top-0 bottom-0 z-40",
+                            "fixed right-0 top-16 bottom-0 z-40",
                             "flex flex-col",
                             "bg-background/95 border-l border-white/10",
                             "backdrop-blur-xl shadow-2xl",
@@ -181,8 +182,8 @@ export function UtilitiesPanel({
                         <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 min-w-0">
                             {utilitiesArray.length > 0 ? (
                                 utilitiesArray.map((utility, index) => (
-                                    <div 
-                                        key={index} 
+                                    <div
+                                        key={index}
                                         className={index > 0 ? "pt-4 mt-4 border-t border-gray-500/60" : ""}
                                     >
                                         {utility}
