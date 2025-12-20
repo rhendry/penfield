@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { PixelCanvas } from "../../client/src/components/editor/pixel-canvas";
+import { smoothCurveAdaptive, type Point } from "../../client/src/lib/bezier";
 
 const meta = {
     title: "Editor/PixelCanvas",
@@ -170,6 +171,138 @@ export const Interactive: Story = {
                     pixels={pixels}
                     onPixelClick={handlePixelClick}
                     onPixelDrag={handlePixelDrag}
+                />
+            </div>
+        );
+    },
+};
+
+// Bezier curve test story - shows control points and curve visualization
+export const BezierCurveTest: Story = {
+    render: () => {
+        const [pixels, setPixels] = useState<Record<string, string>>({});
+        const [controlPoints, setControlPoints] = useState<Point[]>([]);
+        const [curvePoints, setCurvePoints] = useState<Point[]>([]);
+        const inputBufferRef = useRef<Point[]>([]);
+        const lastDrawnRef = useRef<Point | null>(null);
+        const rafIdRef = useRef<number | null>(null);
+        
+        const processBuffer = useCallback(() => {
+            if (inputBufferRef.current.length === 0) {
+                rafIdRef.current = null;
+                return;
+            }
+            
+            const buffer = [...inputBufferRef.current];
+            inputBufferRef.current = [];
+            
+            // Build control points
+            const points: Point[] = [];
+            if (lastDrawnRef.current) {
+                points.push(lastDrawnRef.current);
+            }
+            buffer.forEach(p => points.push(p));
+            
+            console.log("🔵 Control points:", points);
+            setControlPoints([...points]);
+            
+            if (points.length >= 2) {
+                // Generate curve
+                const curve = smoothCurveAdaptive(points, 0.5, 2);
+                console.log("🟢 Curve points:", curve);
+                setCurvePoints([...curve]);
+                
+                // Draw pixels along curve
+                setPixels((prev) => {
+                    const newPixels = { ...prev };
+                    curve.forEach(p => {
+                        newPixels[`${p.x},${p.y}`] = "#000000";
+                    });
+                    return newPixels;
+                });
+                
+                if (curve.length > 0) {
+                    lastDrawnRef.current = curve[curve.length - 1];
+                }
+            } else if (points.length === 1) {
+                const p = points[0];
+                setPixels((prev) => {
+                    const newPixels = { ...prev };
+                    newPixels[`${p.x},${p.y}`] = "#000000";
+                    return newPixels;
+                });
+                lastDrawnRef.current = p;
+            }
+            
+            if (inputBufferRef.current.length > 0) {
+                rafIdRef.current = requestAnimationFrame(processBuffer);
+            } else {
+                rafIdRef.current = null;
+            }
+        }, []);
+        
+        const handlePixelClick = useCallback((x: number, y: number, button: "left" | "right") => {
+            console.log("🖱️ Click:", { x, y });
+            lastDrawnRef.current = { x, y };
+            setPixels((prev) => {
+                const newPixels = { ...prev };
+                newPixels[`${x},${y}`] = "#ff0000"; // Red for control points
+                return newPixels;
+            });
+            setControlPoints([{ x, y }]);
+            setCurvePoints([]);
+        }, []);
+        
+        const handlePixelDrag = useCallback((x: number, y: number, button: "left" | "right") => {
+            inputBufferRef.current.push({ x, y });
+            if (rafIdRef.current === null) {
+                rafIdRef.current = requestAnimationFrame(processBuffer);
+            }
+        }, [processBuffer]);
+        
+        const handleMouseUp = useCallback(() => {
+            if (inputBufferRef.current.length > 0) {
+                processBuffer();
+            }
+            lastDrawnRef.current = null;
+            inputBufferRef.current = [];
+            setControlPoints([]);
+            setCurvePoints([]);
+        }, [processBuffer]);
+        
+        // Show debug info
+        const debugInfo = (
+            <div style={{
+                position: "absolute",
+                top: 10,
+                left: 10,
+                background: "rgba(0,0,0,0.7)",
+                color: "white",
+                padding: "10px",
+                borderRadius: "4px",
+                fontSize: "12px",
+                zIndex: 1000,
+                fontFamily: "monospace"
+            }}>
+                <div>Control Points: {controlPoints.length}</div>
+                <div>Curve Points: {curvePoints.length}</div>
+                <div>Buffer Size: {inputBufferRef.current.length}</div>
+                {controlPoints.length > 0 && (
+                    <div style={{ marginTop: "5px" }}>
+                        <div>Last Control: ({controlPoints[controlPoints.length - 1]?.x}, {controlPoints[controlPoints.length - 1]?.y})</div>
+                    </div>
+                )}
+            </div>
+        );
+        
+        return (
+            <div style={{ width: "100%", height: "100vh", position: "absolute", inset: 0 }}>
+                {debugInfo}
+                <PixelCanvas
+                    pixels={pixels}
+                    onPixelClick={handlePixelClick}
+                    onPixelDrag={handlePixelDrag}
+                    onMouseUp={handleMouseUp}
                 />
             </div>
         );
