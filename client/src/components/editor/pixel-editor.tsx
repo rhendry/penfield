@@ -83,10 +83,22 @@ export function PixelEditor({
         initialContent?.grid || {}
     );
     
-    // Track last drawn pixel for straight line drawing
+    // Track last drawn pixel for continuous line drawing
     const lastDrawnPixelRef = useRef<{ x: number; y: number } | null>(null);
+    // Track initial click position for shift line drawing
+    const initialClickPositionRef = useRef<{ x: number; y: number } | null>(null);
     const isShiftPressedRef = useRef(false);
     const maxSize = 1000;
+    
+    // Input buffering: collect mouse positions faster than we can render
+    const inputBufferRef = useRef<Array<{ x: number; y: number; button: "left" | "right" }>>([]);
+    const rafIdRef = useRef<number | null>(null);
+    const pixelsRef = useRef<Record<string, string>>(pixels);
+    
+    // Keep pixelsRef in sync with pixels state
+    useEffect(() => {
+        pixelsRef.current = pixels;
+    }, [pixels]);
     
     // Update parent when pixels change (use ref to avoid infinite loop)
     const onPixelsChangeRef = useRef(onPixelsChange);
@@ -109,7 +121,7 @@ export function PixelEditor({
         const handleKeyUp = (e: KeyboardEvent) => {
             if (e.key === "Shift") {
                 isShiftPressedRef.current = false;
-                lastDrawnPixelRef.current = null;
+                // Don't clear initialClickPosition here - it should persist until mouse up
             }
         };
         
@@ -122,17 +134,91 @@ export function PixelEditor({
         };
     }, []);
     
-    // Create tool context
+    // Create tool context (uses ref for pixels to avoid stale closures)
     const createToolContext = useCallback((): ToolContext => {
         return {
-            pixels,
+            pixels: pixelsRef.current,
             maxSize,
             leftClickColor,
             rightClickColor,
             isShiftPressed: isShiftPressedRef.current,
             lastDrawnPixel: lastDrawnPixelRef.current,
+            initialClickPosition: initialClickPositionRef.current,
         };
-    }, [pixels, leftClickColor, rightClickColor]);
+    }, [leftClickColor, rightClickColor]);
+    
+    // Process buffered input positions using requestAnimationFrame
+    const processInputBuffer = useCallback(() => {
+        if (inputBufferRef.current.length === 0) {
+            rafIdRef.current = null;
+            return;
+        }
+        
+        if (!selectedTool) {
+            inputBufferRef.current = [];
+            rafIdRef.current = null;
+            return;
+        }
+        
+        const toolId = selectedTool.id;
+        const libraryTool = getTool(toolId);
+        if (!libraryTool) {
+            inputBufferRef.current = [];
+            rafIdRef.current = null;
+            return;
+        }
+        
+        // Process all buffered positions
+        let currentPixels = { ...pixelsRef.current };
+        const buffer = [...inputBufferRef.current];
+        inputBufferRef.current = [];
+        
+        // Process each position, chaining from the previous one
+        for (let i = 0; i < buffer.length; i++) {
+            const current = buffer[i];
+            const context = createToolContext();
+            context.pixels = currentPixels;
+            
+            // Set lastDrawnPixel appropriately
+            if (i === 0 && lastDrawnPixelRef.current) {
+                // First position: use the stored lastDrawnPixel
+                context.lastDrawnPixel = lastDrawnPixelRef.current;
+            } else if (i > 0) {
+                // Subsequent positions: use the previous position in buffer
+                const prev = buffer[i - 1];
+                context.lastDrawnPixel = { x: prev.x, y: prev.y };
+            } else {
+                // No previous position
+                context.lastDrawnPixel = null;
+            }
+            
+            const result = libraryTool.onPixelDrag(current.x, current.y, current.button, context);
+            
+            // Update pixels for next iteration
+            currentPixels = result.pixels;
+            if (result.lastDrawnPixel !== undefined) {
+                lastDrawnPixelRef.current = result.lastDrawnPixel;
+            }
+        }
+        
+        // Update state with all processed pixels
+        pixelsRef.current = currentPixels;
+        setPixels(currentPixels);
+        
+        // Schedule next frame if there's more input
+        if (inputBufferRef.current.length > 0) {
+            rafIdRef.current = requestAnimationFrame(processInputBuffer);
+        } else {
+            rafIdRef.current = null;
+        }
+    }, [selectedTool, createToolContext]);
+    
+    // Schedule processing if not already scheduled
+    const scheduleProcessing = useCallback(() => {
+        if (rafIdRef.current === null) {
+            rafIdRef.current = requestAnimationFrame(processInputBuffer);
+        }
+    }, [processInputBuffer]);
     
     // Handle pixel click
     const handlePixelClick = useCallback((x: number, y: number, button: "left" | "right") => {
@@ -140,11 +226,15 @@ export function PixelEditor({
         
         const toolId = selectedTool.id;
         
+        // Store initial click position for shift line drawing
+        initialClickPositionRef.current = { x, y };
+        
         // Try to get tool from library first
         const libraryTool = getTool(toolId);
         if (libraryTool) {
             const context = createToolContext();
             const result = libraryTool.onPixelClick(x, y, button, context);
+            pixelsRef.current = result.pixels;
             setPixels(result.pixels);
             if (result.lastDrawnPixel !== undefined) {
                 lastDrawnPixelRef.current = result.lastDrawnPixel;
@@ -154,37 +244,53 @@ export function PixelEditor({
         
         // Fallback to legacy tools (Fill tool)
         if (toolId === "fill") {
-            const color = button === "left" ? leftClickColor : rightClickColor;
-            setPixels((prev) => floodFill(prev, x, y, color, maxSize));
+            setPixels((prev) => {
+                const color = button === "left" ? leftClickColor : rightClickColor;
+                const newPixels = floodFill(prev, x, y, color, maxSize);
+                pixelsRef.current = newPixels;
+                return newPixels;
+            });
         }
-    }, [selectedTool, createToolContext, leftClickColor, rightClickColor]);
+    }, [selectedTool, createToolContext, leftClickColor, rightClickColor, maxSize]);
     
-    // Handle pixel drag
+    // Handle pixel drag - buffer input instead of processing immediately
     const handlePixelDrag = useCallback((x: number, y: number, button: "left" | "right") => {
         if (!selectedTool) return;
         
-        const toolId = selectedTool.id;
+        // Add to input buffer
+        inputBufferRef.current.push({ x, y, button });
         
-        // Try to get tool from library first
-        const libraryTool = getTool(toolId);
-        if (libraryTool) {
-            const context = createToolContext();
-            const result = libraryTool.onPixelDrag(x, y, button, context);
-            setPixels(result.pixels);
-            if (result.lastDrawnPixel !== undefined) {
-                lastDrawnPixelRef.current = result.lastDrawnPixel;
-            }
-            return;
+        // Schedule processing if not already scheduled
+        scheduleProcessing();
+    }, [selectedTool, scheduleProcessing]);
+    
+    // Handle mouse up - clear drawing state and flush buffer
+    const handleMouseUp = useCallback(() => {
+        // Process any remaining buffered input
+        if (inputBufferRef.current.length > 0) {
+            processInputBuffer();
         }
         
-        // Fallback to legacy tools (Fill tool doesn't support drag)
-    }, [selectedTool, createToolContext]);
+        // Clear initial click position and last drawn pixel when mouse is released
+        initialClickPositionRef.current = null;
+        lastDrawnPixelRef.current = null;
+    }, [processInputBuffer]);
+    
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            if (rafIdRef.current !== null) {
+                cancelAnimationFrame(rafIdRef.current);
+            }
+        };
+    }, []);
     
     return (
         <PixelCanvas
             pixels={pixels}
             onPixelClick={handlePixelClick}
             onPixelDrag={handlePixelDrag}
+            onMouseUp={handleMouseUp}
             className={className}
         />
     );

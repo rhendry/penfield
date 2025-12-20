@@ -85,8 +85,25 @@ export const penTool: PixelTool = {
         
         const color = button === "left" ? context.leftClickColor : context.rightClickColor;
         
-        // Draw straight line if Shift is pressed and we have a last drawn pixel
-        if (context.isShiftPressed && context.lastDrawnPixel) {
+        // Draw straight line if Shift is pressed and we have an initial click position
+        if (context.isShiftPressed && context.initialClickPosition) {
+            const newPixels = drawLine(
+                context.pixels,
+                context.initialClickPosition.x,
+                context.initialClickPosition.y,
+                x,
+                y,
+                color
+            );
+            return {
+                pixels: newPixels,
+                lastDrawnPixel: { x, y },
+            };
+        }
+        
+        // Otherwise, draw a line from the last drawn pixel to current position
+        // This fills gaps when moving quickly
+        if (context.lastDrawnPixel) {
             const newPixels = drawLine(
                 context.pixels,
                 context.lastDrawnPixel.x,
@@ -101,7 +118,7 @@ export const penTool: PixelTool = {
             };
         }
         
-        // Otherwise draw single pixel
+        // Fallback: draw single pixel (shouldn't happen normally)
         const newPixels = { ...context.pixels };
         newPixels[`${x},${y}`] = color;
         

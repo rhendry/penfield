@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import { useState, useCallback } from "react";
 import { PixelCanvas } from "../../client/src/components/editor/pixel-canvas";
 
 const meta = {
@@ -140,5 +141,38 @@ export const WithPattern: Story = {
             <PixelCanvas pixels={patternPixels} />
         </div>
     ),
+};
+
+// Interactive drawing story
+export const Interactive: Story = {
+    render: () => {
+        const [pixels, setPixels] = useState<Record<string, string>>({});
+        
+        const handlePixelClick = useCallback((x: number, y: number, button: "left" | "right") => {
+            setPixels((prev) => {
+                const newPixels = { ...prev };
+                newPixels[`${x},${y}`] = "#000000";
+                return newPixels;
+            });
+        }, []);
+        
+        const handlePixelDrag = useCallback((x: number, y: number, button: "left" | "right") => {
+            setPixels((prev) => {
+                const newPixels = { ...prev };
+                newPixels[`${x},${y}`] = "#000000";
+                return newPixels;
+            });
+        }, []);
+        
+        return (
+            <div style={{ width: "100%", height: "100vh", position: "absolute", inset: 0 }}>
+                <PixelCanvas
+                    pixels={pixels}
+                    onPixelClick={handlePixelClick}
+                    onPixelDrag={handlePixelDrag}
+                />
+            </div>
+        );
+    },
 };
 

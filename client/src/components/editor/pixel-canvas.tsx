@@ -20,6 +20,8 @@ export interface PixelCanvasProps {
     onPixelClick?: (x: number, y: number, button: "left" | "right") => void;
     /** Callback when dragging over pixels */
     onPixelDrag?: (x: number, y: number, button: "left" | "right") => void;
+    /** Callback when mouse is released */
+    onMouseUp?: () => void;
     /** Additional className */
     className?: string;
 }
@@ -38,6 +40,7 @@ export function PixelCanvas({
     pixels = {},
     onPixelClick,
     onPixelDrag,
+    onMouseUp,
     className,
 }: PixelCanvasProps) {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -269,7 +272,10 @@ export function PixelCanvas({
         setIsPanning(false);
         setIsDrawing(false);
         setDrawButton(null);
-    }, []);
+        if (onMouseUp) {
+            onMouseUp();
+        }
+    }, [onMouseUp]);
     
     // Set up event listeners
     useEffect(() => {

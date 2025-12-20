@@ -14,8 +14,10 @@ export interface ToolContext {
     rightClickColor: string;
     /** Whether Shift key is currently pressed */
     isShiftPressed: boolean;
-    /** Last drawn pixel position (for line drawing) */
+    /** Last drawn pixel position (for continuous line drawing) */
     lastDrawnPixel: { x: number; y: number } | null;
+    /** Initial click position (for shift line drawing) */
+    initialClickPosition: { x: number; y: number } | null;
 }
 
 /**
