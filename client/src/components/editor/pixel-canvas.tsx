@@ -45,6 +45,7 @@ export function PixelCanvas({
 }: PixelCanvasProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const svgRef = useRef<SVGSVGElement>(null);
+    const canvasRef = useRef<HTMLCanvasElement>(null);
     
     // Get container dimensions
     const [containerSize, setContainerSize] = useState({ width: 800, height: 600 });
@@ -320,6 +321,46 @@ export function PixelCanvas({
     const viewBoxY = -panY / zoom;
     const viewBoxWidth = containerSize.width / zoom;
     const viewBoxHeight = containerSize.height / zoom;
+    
+    // Render pixels to canvas (much more efficient than SVG rects)
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        
+        // Set canvas size to match container (with device pixel ratio for sharpness)
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = containerSize.width * dpr;
+        canvas.height = containerSize.height * dpr;
+        ctx.scale(dpr, dpr);
+        
+        // Clear canvas
+        ctx.clearRect(0, 0, containerSize.width, containerSize.height);
+        
+        // Draw each pixel - only iterate visible area for large datasets
+        const pixelEntries = Object.entries(pixels);
+        for (let i = 0; i < pixelEntries.length; i++) {
+            const [key, color] = pixelEntries[i];
+            const commaIdx = key.indexOf(",");
+            const x = parseInt(key.slice(0, commaIdx), 10);
+            const y = parseInt(key.slice(commaIdx + 1), 10);
+            
+            // Skip pixels outside visible area
+            if (x < clampedStartX - 1 || x > clampedEndX + 1 || 
+                y < clampedStartY - 1 || y > clampedEndY + 1) {
+                continue;
+            }
+            
+            // Convert canvas coordinates to screen coordinates
+            const screenX = (x * zoom) + panX;
+            const screenY = (y * zoom) + panY;
+            
+            ctx.fillStyle = color;
+            ctx.fillRect(screenX, screenY, zoom, zoom);
+        }
+    }, [pixels, zoom, panX, panY, containerSize, clampedStartX, clampedEndX, clampedStartY, clampedEndY]);
 
     return (
         <div
@@ -329,6 +370,14 @@ export function PixelCanvas({
             onMouseDown={handleMouseDown}
             onContextMenu={(e) => e.preventDefault()} // Prevent context menu on right click
         >
+            {/* Canvas layer for pixels (efficient rendering) */}
+            <canvas
+                ref={canvasRef}
+                className="absolute inset-0 w-full h-full"
+                style={{ pointerEvents: "none" }}
+            />
+            
+            {/* SVG layer for grid lines */}
             <svg
                 ref={svgRef}
                 className="absolute inset-0 w-full h-full"
@@ -336,6 +385,7 @@ export function PixelCanvas({
                     ? `${viewBoxX} ${viewBoxY} ${viewBoxWidth} ${viewBoxHeight}`
                     : `-25 -25 50 50`}
                 preserveAspectRatio="none"
+                style={{ pointerEvents: "none" }}
             >
                 {/* Grid lines - vertical */}
                 {numVerticalLines > 0 && Array.from({ length: numVerticalLines }, (_, i) => {
@@ -371,25 +421,6 @@ export function PixelCanvas({
                             y2={y}
                             stroke={isAxis ? xAxisColor : gridLineColor}
                             strokeWidth={strokeWidth}
-                        />
-                    );
-                })}
-                
-                {/* Render pixels */}
-                {Object.entries(pixels).map(([key, color]) => {
-                    const [x, y] = key.split(",").map(Number);
-                    // Only render visible pixels
-                    if (x < clampedStartX || x > clampedEndX || y < clampedStartY || y > clampedEndY) {
-                        return null;
-                    }
-                    return (
-                        <rect
-                            key={`pixel-${key}`}
-                            x={x}
-                            y={y}
-                            width={1}
-                            height={1}
-                            fill={color}
                         />
                     );
                 })}

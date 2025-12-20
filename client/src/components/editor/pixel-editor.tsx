@@ -90,10 +90,6 @@ export function PixelEditor({
     const inputBufferRef = useRef<Point[]>([]);
     const rafIdRef = useRef<number | null>(null);
 
-    // Debug state for Bezier curve visualization (exactly like storybook)
-    const [controlPoints, setControlPoints] = useState<Point[]>([]);
-    const [curvePoints, setCurvePoints] = useState<Point[]>([]);
-
     // Update parent when pixels change (use ref to avoid infinite loop)
     const onPixelsChangeRef = useRef(onPixelsChange);
     useEffect(() => {
@@ -112,7 +108,7 @@ export function PixelEditor({
         return button === "left" ? leftClickColor : rightClickColor;
     }, [selectedTool, leftClickColor, rightClickColor]);
 
-    // Process buffered input - EXACTLY like BezierCurveTest storybook
+    // Process buffered input - generates Bezier curve and draws pixels
     const processBuffer = useCallback(() => {
         if (inputBufferRef.current.length === 0) {
             rafIdRef.current = null;
@@ -122,27 +118,22 @@ export function PixelEditor({
         const buffer = [...inputBufferRef.current];
         inputBufferRef.current = [];
 
-        // Build control points (exactly like storybook)
+        // Build control points for Bezier curve
         const points: Point[] = [];
         if (lastDrawnRef.current) {
             points.push(lastDrawnRef.current);
         }
         buffer.forEach(p => points.push(p));
 
-        setControlPoints([...points]);
-
         if (points.length >= 2) {
-            // Generate curve (exactly like storybook)
+            // Generate curve and draw pixels
             const curve = smoothCurveAdaptive(points, 0.5, 2);
-            setCurvePoints([...curve]);
 
-            // Draw pixels along curve (exactly like storybook)
             setPixels((prev) => {
                 const newPixels = { ...prev };
-                const color = getColorForDraw("left"); // Use left click color for drag
+                const color = getColorForDraw("left");
                 curve.forEach(p => {
                     if (color === "") {
-                        // Eraser - delete the pixel
                         delete newPixels[`${p.x},${p.y}`];
                     } else if (color) {
                         newPixels[`${p.x},${p.y}`] = color;
@@ -189,7 +180,7 @@ export function PixelEditor({
             return;
         }
 
-        // For pen/eraser: exactly like storybook
+        // For pen/eraser: set last drawn and draw pixel
         lastDrawnRef.current = { x, y };
         setPixels((prev) => {
             const newPixels = { ...prev };
@@ -201,8 +192,6 @@ export function PixelEditor({
             }
             return newPixels;
         });
-        setControlPoints([{ x, y }]);
-        setCurvePoints([]);
     }, [selectedTool, leftClickColor, rightClickColor, maxSize, getColorForDraw]);
 
     // Handle pixel drag - EXACTLY like BezierCurveTest storybook
@@ -216,15 +205,13 @@ export function PixelEditor({
         }
     }, [selectedTool, processBuffer]);
 
-    // Handle mouse up - EXACTLY like BezierCurveTest storybook
+    // Handle mouse up - flush buffer and reset drawing state
     const handleMouseUp = useCallback(() => {
         if (inputBufferRef.current.length > 0) {
             processBuffer();
         }
         lastDrawnRef.current = null;
         inputBufferRef.current = [];
-        setControlPoints([]);
-        setCurvePoints([]);
     }, [processBuffer]);
 
     // Cleanup on unmount
@@ -236,42 +223,13 @@ export function PixelEditor({
         };
     }, []);
 
-    // Debug UI (exactly like BezierCurveTest story)
-    const debugInfo = (
-        <div style={{
-            position: "absolute",
-            top: 10,
-            left: 10,
-            background: "rgba(0,0,0,0.7)",
-            color: "white",
-            padding: "10px",
-            borderRadius: "4px",
-            fontSize: "12px",
-            zIndex: 1000,
-            fontFamily: "monospace",
-            pointerEvents: "none"
-        }}>
-            <div>Control Points: {controlPoints.length}</div>
-            <div>Curve Points: {curvePoints.length}</div>
-            <div>Buffer Size: {inputBufferRef.current.length}</div>
-            {controlPoints.length > 0 && (
-                <div style={{ marginTop: "5px" }}>
-                    <div>Last Control: ({controlPoints[controlPoints.length - 1]?.x}, {controlPoints[controlPoints.length - 1]?.y})</div>
-                </div>
-            )}
-        </div>
-    );
-
     return (
-        <div style={{ position: "relative", width: "100%", height: "100%" }}>
-            {debugInfo}
-            <PixelCanvas
-                pixels={pixels}
-                onPixelClick={handlePixelClick}
-                onPixelDrag={handlePixelDrag}
-                onMouseUp={handleMouseUp}
-                className={className}
-            />
-        </div>
+        <PixelCanvas
+            pixels={pixels}
+            onPixelClick={handlePixelClick}
+            onPixelDrag={handlePixelDrag}
+            onMouseUp={handleMouseUp}
+            className={className}
+        />
     );
 }
