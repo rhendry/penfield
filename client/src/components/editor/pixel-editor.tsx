@@ -21,7 +21,7 @@ export function PixelEditor({
     className,
 }: PixelEditorProps) {
     const canvasRef = useRef<PixelCanvasHandle>(null);
-    const maxSize = 1000;
+    const maxSize = 256;
     const halfSize = maxSize / 2;
 
     // Track current button being held

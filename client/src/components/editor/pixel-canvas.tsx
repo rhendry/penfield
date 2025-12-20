@@ -133,7 +133,7 @@ void main() {
  * Uses WebGL texture for GPU-accelerated rendering.
  */
 export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(function PixelCanvas({
-    maxSize = 1000,
+    maxSize = 256,
     defaultZoomPixels = 50,
     backgroundColor = "#ffffff",
     gridLineColor = "#e5e5e5",
