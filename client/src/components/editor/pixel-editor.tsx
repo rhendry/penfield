@@ -1,7 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { PixelCanvas } from "./pixel-canvas";
 import { Tool } from "@/components/toolbelt/types";
-import { getTool, ToolContext } from "@/tools";
 import { smoothCurveAdaptive, type Point } from "@/lib/bezier";
 
 interface PixelEditorProps {
@@ -83,26 +82,17 @@ export function PixelEditor({
         initialContent?.grid || {}
     );
 
-    // Track last drawn pixel for continuous line drawing
-    const lastDrawnPixelRef = useRef<{ x: number; y: number } | null>(null);
-    // Track initial click position for shift line drawing
-    const initialClickPositionRef = useRef<{ x: number; y: number } | null>(null);
-    const isShiftPressedRef = useRef(false);
+    // Track last drawn pixel for continuous line drawing (exactly like storybook)
+    const lastDrawnRef = useRef<Point | null>(null);
     const maxSize = 1000;
 
-    // Input buffering: collect mouse positions faster than we can render
-    const inputBufferRef = useRef<Array<{ x: number; y: number; button: "left" | "right" }>>([]);
+    // Input buffering: collect mouse positions faster than we can render (exactly like storybook)
+    const inputBufferRef = useRef<Point[]>([]);
     const rafIdRef = useRef<number | null>(null);
-    const pixelsRef = useRef<Record<string, string>>(pixels);
 
-    // Debug state for Bezier curve visualization
+    // Debug state for Bezier curve visualization (exactly like storybook)
     const [controlPoints, setControlPoints] = useState<Point[]>([]);
     const [curvePoints, setCurvePoints] = useState<Point[]>([]);
-
-    // Keep pixelsRef in sync with pixels state
-    useEffect(() => {
-        pixelsRef.current = pixels;
-    }, [pixels]);
 
     // Update parent when pixels change (use ref to avoid infinite loop)
     const onPixelsChangeRef = useRef(onPixelsChange);
@@ -114,230 +104,128 @@ export function PixelEditor({
         onPixelsChangeRef.current(pixels);
     }, [pixels]);
 
-    // Handle keyboard for Shift key
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === "Shift") {
-                isShiftPressedRef.current = true;
-            }
-        };
+    // Get color based on tool and button (pen draws, eraser removes)
+    const getColorForDraw = useCallback((button: "left" | "right"): string | null => {
+        if (!selectedTool) return null;
+        if (selectedTool.id === "eraser") return ""; // Empty string means erase
+        // For pen and other tools, use the click color
+        return button === "left" ? leftClickColor : rightClickColor;
+    }, [selectedTool, leftClickColor, rightClickColor]);
 
-        const handleKeyUp = (e: KeyboardEvent) => {
-            if (e.key === "Shift") {
-                isShiftPressedRef.current = false;
-                // Don't clear initialClickPosition here - it should persist until mouse up
-            }
-        };
-
-        window.addEventListener("keydown", handleKeyDown);
-        window.addEventListener("keyup", handleKeyUp);
-
-        return () => {
-            window.removeEventListener("keydown", handleKeyDown);
-            window.removeEventListener("keyup", handleKeyUp);
-        };
-    }, []);
-
-    // Create tool context (uses ref for pixels to avoid stale closures)
-    const createToolContext = useCallback((): ToolContext => {
-        return {
-            pixels: pixelsRef.current,
-            maxSize,
-            leftClickColor,
-            rightClickColor,
-            isShiftPressed: isShiftPressedRef.current,
-            lastDrawnPixel: lastDrawnPixelRef.current,
-            initialClickPosition: initialClickPositionRef.current,
-        };
-    }, [leftClickColor, rightClickColor]);
-
-    // Process buffered input positions using requestAnimationFrame with Bezier curve smoothing
-    const processInputBuffer = useCallback(() => {
+    // Process buffered input - EXACTLY like BezierCurveTest storybook
+    const processBuffer = useCallback(() => {
         if (inputBufferRef.current.length === 0) {
             rafIdRef.current = null;
             return;
         }
 
-        if (!selectedTool) {
-            inputBufferRef.current = [];
-            rafIdRef.current = null;
-            return;
-        }
-
-        const toolId = selectedTool.id;
-        const libraryTool = getTool(toolId);
-        if (!libraryTool) {
-            inputBufferRef.current = [];
-            rafIdRef.current = null;
-            return;
-        }
-
-        // Get buffered positions
         const buffer = [...inputBufferRef.current];
         inputBufferRef.current = [];
 
-        // Check if shift is pressed - if so, use tool's straight line logic
-        if (isShiftPressedRef.current && initialClickPositionRef.current && buffer.length > 0) {
-            // Shift mode: draw straight line from initial click to last buffered position
-            const lastPos = buffer[buffer.length - 1];
-            const context = createToolContext();
-            const result = libraryTool.onPixelDrag(
-                lastPos.x,
-                lastPos.y,
-                lastPos.button,
-                context
-            );
-            pixelsRef.current = result.pixels;
-            setPixels(result.pixels);
-            if (result.lastDrawnPixel !== undefined) {
-                lastDrawnPixelRef.current = result.lastDrawnPixel;
-            }
-        } else if (buffer.length > 0) {
-            // Freehand mode: use Bezier curves for smooth drawing
-            // Build control points array for Bezier curve
-            const controlPoints: Point[] = [];
+        // Build control points (exactly like storybook)
+        const points: Point[] = [];
+        if (lastDrawnRef.current) {
+            points.push(lastDrawnRef.current);
+        }
+        buffer.forEach(p => points.push(p));
 
-            // Add last drawn pixel as first control point if available
-            if (lastDrawnPixelRef.current) {
-                controlPoints.push(lastDrawnPixelRef.current);
-            }
+        setControlPoints([...points]);
 
-            // Add all buffered positions as control points
-            buffer.forEach(pos => {
-                controlPoints.push({ x: pos.x, y: pos.y });
+        if (points.length >= 2) {
+            // Generate curve (exactly like storybook)
+            const curve = smoothCurveAdaptive(points, 0.5, 2);
+            setCurvePoints([...curve]);
+
+            // Draw pixels along curve (exactly like storybook)
+            setPixels((prev) => {
+                const newPixels = { ...prev };
+                const color = getColorForDraw("left"); // Use left click color for drag
+                curve.forEach(p => {
+                    if (color === "") {
+                        // Eraser - delete the pixel
+                        delete newPixels[`${p.x},${p.y}`];
+                    } else if (color) {
+                        newPixels[`${p.x},${p.y}`] = color;
+                    }
+                });
+                return newPixels;
             });
 
-            // Update debug state
-            setControlPoints([...controlPoints]);
-
-            // If we have at least 2 points, generate smooth curve
-            if (controlPoints.length >= 2) {
-                // Generate smooth curve points (exactly like BezierCurveTest story)
-                const generatedCurvePoints = smoothCurveAdaptive(
-                    controlPoints,
-                    0.5, // tension
-                    2    // points per pixel
-                );
-
-                // Update debug state
-                setCurvePoints([...generatedCurvePoints]);
-
-                const color = buffer[0].button === "left" ? leftClickColor : rightClickColor;
-                const halfSize = maxSize / 2;
-
-                // Draw pixels along curve (exactly like BezierCurveTest story)
-                setPixels((prev) => {
-                    const newPixels = { ...prev };
-                    generatedCurvePoints.forEach(p => {
-                        // Only draw if within bounds
-                        if (p.x >= -halfSize && p.x < halfSize && p.y >= -halfSize && p.y < halfSize) {
-                            newPixels[`${p.x},${p.y}`] = color;
-                        }
-                    });
-                    // Update ref to match state
-                    pixelsRef.current = newPixels;
-                    return newPixels;
-                });
-
-                // Update last drawn pixel to last curve point
-                if (generatedCurvePoints.length > 0) {
-                    const lastPoint = generatedCurvePoints[generatedCurvePoints.length - 1];
-                    lastDrawnPixelRef.current = lastPoint;
-                }
-            } else if (controlPoints.length === 1) {
-                // Single point - just draw it directly (exactly like BezierCurveTest story)
-                const point = controlPoints[0];
-                const color = buffer[0].button === "left" ? leftClickColor : rightClickColor;
-                const halfSize = maxSize / 2;
-
-                setCurvePoints([]);
-
-                setPixels((prev) => {
-                    const newPixels = { ...prev };
-                    if (point.x >= -halfSize && point.x < halfSize && point.y >= -halfSize && point.y < halfSize) {
-                        newPixels[`${point.x},${point.y}`] = color;
-                    }
-                    // Update ref to match state
-                    pixelsRef.current = newPixels;
-                    return newPixels;
-                });
-
-                lastDrawnPixelRef.current = point;
+            if (curve.length > 0) {
+                lastDrawnRef.current = curve[curve.length - 1];
             }
+        } else if (points.length === 1) {
+            const p = points[0];
+            setPixels((prev) => {
+                const newPixels = { ...prev };
+                const color = getColorForDraw("left");
+                if (color === "") {
+                    delete newPixels[`${p.x},${p.y}`];
+                } else if (color) {
+                    newPixels[`${p.x},${p.y}`] = color;
+                }
+                return newPixels;
+            });
+            lastDrawnRef.current = p;
         }
 
-        // Schedule next frame if there's more input
         if (inputBufferRef.current.length > 0) {
-            rafIdRef.current = requestAnimationFrame(processInputBuffer);
+            rafIdRef.current = requestAnimationFrame(processBuffer);
         } else {
             rafIdRef.current = null;
         }
-    }, [selectedTool, createToolContext, leftClickColor, rightClickColor, maxSize]);
+    }, [getColorForDraw]);
 
-    // Schedule processing if not already scheduled
-    const scheduleProcessing = useCallback(() => {
-        if (rafIdRef.current === null) {
-            rafIdRef.current = requestAnimationFrame(processInputBuffer);
-        }
-    }, [processInputBuffer]);
-
-    // Handle pixel click
+    // Handle pixel click - EXACTLY like BezierCurveTest storybook
     const handlePixelClick = useCallback((x: number, y: number, button: "left" | "right") => {
         if (!selectedTool) return;
 
-        const toolId = selectedTool.id;
-
-        // Store initial click position for shift line drawing
-        initialClickPositionRef.current = { x, y };
-
-        // Try to get tool from library first
-        const libraryTool = getTool(toolId);
-        if (libraryTool) {
-            const context = createToolContext();
-            const result = libraryTool.onPixelClick(x, y, button, context);
-            pixelsRef.current = result.pixels;
-            setPixels(result.pixels);
-            if (result.lastDrawnPixel !== undefined) {
-                lastDrawnPixelRef.current = result.lastDrawnPixel;
-            }
+        // Fill tool has special handling
+        if (selectedTool.id === "fill") {
+            setPixels((prev) => {
+                const color = button === "left" ? leftClickColor : rightClickColor;
+                return floodFill(prev, x, y, color, maxSize);
+            });
             return;
         }
 
-        // Fallback to legacy tools (Fill tool)
-        if (toolId === "fill") {
-            setPixels((prev) => {
-                const color = button === "left" ? leftClickColor : rightClickColor;
-                const newPixels = floodFill(prev, x, y, color, maxSize);
-                pixelsRef.current = newPixels;
-                return newPixels;
-            });
-        }
-    }, [selectedTool, createToolContext, leftClickColor, rightClickColor, maxSize]);
+        // For pen/eraser: exactly like storybook
+        lastDrawnRef.current = { x, y };
+        setPixels((prev) => {
+            const newPixels = { ...prev };
+            const color = getColorForDraw(button);
+            if (color === "") {
+                delete newPixels[`${x},${y}`];
+            } else if (color) {
+                newPixels[`${x},${y}`] = color;
+            }
+            return newPixels;
+        });
+        setControlPoints([{ x, y }]);
+        setCurvePoints([]);
+    }, [selectedTool, leftClickColor, rightClickColor, maxSize, getColorForDraw]);
 
-    // Handle pixel drag - buffer input instead of processing immediately
-    const handlePixelDrag = useCallback((x: number, y: number, button: "left" | "right") => {
+    // Handle pixel drag - EXACTLY like BezierCurveTest storybook
+    const handlePixelDrag = useCallback((x: number, y: number, _button: "left" | "right") => {
         if (!selectedTool) return;
+        if (selectedTool.id === "fill") return; // Fill doesn't support drag
 
-        // Add to input buffer
-        inputBufferRef.current.push({ x, y, button });
-
-        // Schedule processing if not already scheduled
-        scheduleProcessing();
-    }, [selectedTool, scheduleProcessing]);
-
-    // Handle mouse up - clear drawing state and flush buffer
-    const handleMouseUp = useCallback(() => {
-        // Process any remaining buffered input
-        if (inputBufferRef.current.length > 0) {
-            processInputBuffer();
+        inputBufferRef.current.push({ x, y });
+        if (rafIdRef.current === null) {
+            rafIdRef.current = requestAnimationFrame(processBuffer);
         }
+    }, [selectedTool, processBuffer]);
 
-        // Clear initial click position and last drawn pixel when mouse is released
-        initialClickPositionRef.current = null;
-        lastDrawnPixelRef.current = null;
+    // Handle mouse up - EXACTLY like BezierCurveTest storybook
+    const handleMouseUp = useCallback(() => {
+        if (inputBufferRef.current.length > 0) {
+            processBuffer();
+        }
+        lastDrawnRef.current = null;
+        inputBufferRef.current = [];
         setControlPoints([]);
         setCurvePoints([]);
-    }, [processInputBuffer]);
+    }, [processBuffer]);
 
     // Cleanup on unmount
     useEffect(() => {
