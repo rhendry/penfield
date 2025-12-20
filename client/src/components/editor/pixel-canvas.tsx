@@ -7,8 +7,10 @@ export interface PixelCanvasProps {
     maxSize?: number;
     /** Default zoom level - number of pixels visible in vertical dimension */
     defaultZoomPixels?: number;
-    /** Background color */
+    /** Background color for the pixel canvas area */
     backgroundColor?: string;
+    /** Background color for the area outside the canvas */
+    outerBackgroundColor?: string;
     /** Color for grid lines (non-axis) */
     gridLineColor?: string;
     /** Color for x-axis line */
@@ -128,6 +130,15 @@ void main() {
 }
 `;
 
+const solidColorFragmentShaderSource = `
+precision mediump float;
+uniform vec4 u_color;
+
+void main() {
+    gl_FragColor = u_color;
+}
+`;
+
 /**
  * PixelCanvas - WebGL-based infinite zoomable, pannable grid for pixel art.
  * Uses WebGL texture for GPU-accelerated rendering.
@@ -136,6 +147,7 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(funct
     maxSize = 256,
     defaultZoomPixels = 50,
     backgroundColor = "#ffffff",
+    outerBackgroundColor = "#1a1a1a",
     gridLineColor = "#e5e5e5",
     xAxisColor = "#3b82f6",
     yAxisColor = "#3b82f6",
@@ -152,6 +164,7 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(funct
     const glRef = useRef<WebGLRenderingContext | null>(null);
     const textureRef = useRef<WebGLTexture | null>(null);
     const programRef = useRef<WebGLProgram | null>(null);
+    const backgroundProgramRef = useRef<WebGLProgram | null>(null);
     const positionBufferRef = useRef<WebGLBuffer | null>(null);
     const texCoordBufferRef = useRef<WebGLBuffer | null>(null);
 
@@ -190,15 +203,24 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(funct
 
         glRef.current = gl;
 
-        // Create shaders
+        // Create shaders for texture rendering
         const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
         const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
         if (!vertexShader || !fragmentShader) return;
 
-        // Create program
+        // Create program for texture rendering
         const program = createProgram(gl, vertexShader, fragmentShader);
         if (!program) return;
         programRef.current = program;
+
+        // Create shaders for solid color background
+        const backgroundFragmentShader = createShader(gl, gl.FRAGMENT_SHADER, solidColorFragmentShaderSource);
+        if (!backgroundFragmentShader) return;
+
+        // Create program for background
+        const backgroundProgram = createProgram(gl, vertexShader, backgroundFragmentShader);
+        if (!backgroundProgram) return;
+        backgroundProgramRef.current = backgroundProgram;
 
         // Create buffers
         positionBufferRef.current = gl.createBuffer();
@@ -232,6 +254,7 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(funct
             glRef.current = null;
             textureRef.current = null;
             programRef.current = null;
+            backgroundProgramRef.current = null;
         };
     }, [maxSize]);
 
@@ -293,8 +316,9 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(funct
         const gl = glRef.current;
         const texture = textureRef.current;
         const program = programRef.current;
+        const backgroundProgram = backgroundProgramRef.current;
         const canvas = canvasRef.current;
-        if (!gl || !texture || !program || !canvas) return;
+        if (!gl || !texture || !program || !backgroundProgram || !canvas) return;
         const dpr = window.devicePixelRatio || 1;
         const displayWidth = containerSize.width;
         const displayHeight = containerSize.height;
@@ -355,10 +379,7 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(funct
         gl.clearColor(0, 0, 0, 0);
         gl.clear(gl.COLOR_BUFFER_BIT);
 
-        // Use program
-        gl.useProgram(program);
-
-        // Set up quad covering entire canvas
+        // Set up quad covering canvas area (shared by both programs)
         gl.bindBuffer(gl.ARRAY_BUFFER, positionBufferRef.current);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
             -halfSize, -halfSize,
@@ -367,6 +388,28 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(funct
             halfSize, halfSize,
         ]), gl.STATIC_DRAW);
 
+        // Render white background first
+        gl.useProgram(backgroundProgram);
+        const bgPositionLocation = gl.getAttribLocation(backgroundProgram, "a_position");
+        gl.enableVertexAttribArray(bgPositionLocation);
+        gl.vertexAttribPointer(bgPositionLocation, 2, gl.FLOAT, false, 0, 0);
+
+        const bgResolutionLocation = gl.getUniformLocation(backgroundProgram, "u_resolution");
+        const bgViewOffsetLocation = gl.getUniformLocation(backgroundProgram, "u_viewOffset");
+        const bgZoomLocation = gl.getUniformLocation(backgroundProgram, "u_zoom");
+        const bgColorLocation = gl.getUniformLocation(backgroundProgram, "u_color");
+
+        const [r, g, b, a] = parseColor(backgroundColor);
+        gl.uniform2f(bgResolutionLocation, displayWidth, displayHeight);
+        gl.uniform2f(bgViewOffsetLocation, panX, panY);
+        gl.uniform1f(bgZoomLocation, zoom);
+        gl.uniform4f(bgColorLocation, r / 255, g / 255, b / 255, a / 255);
+
+        // Draw background
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+        // Now render texture on top
+        gl.useProgram(program);
         const positionLocation = gl.getAttribLocation(program, "a_position");
         gl.enableVertexAttribArray(positionLocation);
         gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
@@ -399,9 +442,9 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(funct
         gl.uniform1f(zoomLocation, zoom);
         gl.uniform1i(textureLocation, 0);
 
-        // Draw
+        // Draw texture
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-    }, [containerSize, halfSize, maxSize, zoom, panX, panY]);
+    }, [containerSize, halfSize, maxSize, zoom, panX, panY, backgroundColor]);
 
     // Render on view changes or pixel updates
     useEffect(() => {
@@ -690,7 +733,7 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(funct
         <div
             ref={containerRef}
             className={cn("w-full h-full overflow-hidden relative", className)}
-            style={{ backgroundColor, width: "100%", height: "100%" }}
+            style={{ backgroundColor: outerBackgroundColor, width: "100%", height: "100%" }}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
