@@ -1,7 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { useState, useCallback, useRef } from "react";
-import { PixelCanvas } from "../../client/src/components/editor/pixel-canvas";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { PixelCanvas, PixelCanvasHandle } from "../../client/src/components/editor/pixel-canvas";
 import { smoothCurveAdaptive, type Point } from "../../client/src/lib/bezier";
+import type { PixelDelta } from "../../client/src/tools/types";
 
 const meta = {
     title: "Editor/PixelCanvas",
@@ -67,10 +68,23 @@ const smileyFacePixels = createPixelData([
     [-1, 0, "#000000"], [0, 0, "#000000"], [1, 0, "#000000"],
 ]);
 
+// Component wrapper for stories with initial pixels
+function CanvasWithInitialPixels({ pixels, ...props }: { pixels: Record<string, string> } & React.ComponentProps<typeof PixelCanvas>) {
+    const canvasRef = useRef<PixelCanvasHandle>(null);
+    
+    useEffect(() => {
+        if (canvasRef.current) {
+            canvasRef.current.loadPixels(pixels);
+        }
+    }, [pixels]);
+    
+    return <PixelCanvas ref={canvasRef} {...props} />;
+}
+
 export const WithSmileyFace: Story = {
     render: () => (
         <div style={{ width: "100%", height: "100vh", position: "absolute", inset: 0 }}>
-            <PixelCanvas pixels={smileyFacePixels} />
+            <CanvasWithInitialPixels pixels={smileyFacePixels} />
         </div>
     ),
 };
@@ -94,7 +108,7 @@ const housePixels = createPixelData([
 export const WithHouse: Story = {
     render: () => (
         <div style={{ width: "100%", height: "100vh", position: "absolute", inset: 0 }}>
-            <PixelCanvas pixels={housePixels} />
+            <CanvasWithInitialPixels pixels={housePixels} />
         </div>
     ),
 };
@@ -121,7 +135,7 @@ const characterPixels = createPixelData([
 export const WithCharacter: Story = {
     render: () => (
         <div style={{ width: "100%", height: "100vh", position: "absolute", inset: 0 }}>
-            <PixelCanvas pixels={characterPixels} />
+            <CanvasWithInitialPixels pixels={characterPixels} />
         </div>
     ),
 };
@@ -139,7 +153,7 @@ const patternPixels = createPixelData([
 export const WithPattern: Story = {
     render: () => (
         <div style={{ width: "100%", height: "100vh", position: "absolute", inset: 0 }}>
-            <PixelCanvas pixels={patternPixels} />
+            <CanvasWithInitialPixels pixels={patternPixels} />
         </div>
     ),
 };
@@ -147,28 +161,20 @@ export const WithPattern: Story = {
 // Interactive drawing story
 export const Interactive: Story = {
     render: () => {
-        const [pixels, setPixels] = useState<Record<string, string>>({});
+        const canvasRef = useRef<PixelCanvasHandle>(null);
         
         const handlePixelClick = useCallback((x: number, y: number, button: "left" | "right") => {
-            setPixels((prev) => {
-                const newPixels = { ...prev };
-                newPixels[`${x},${y}`] = "#000000";
-                return newPixels;
-            });
+            canvasRef.current?.applyPixels({ [`${x},${y}`]: "#000000" });
         }, []);
         
         const handlePixelDrag = useCallback((x: number, y: number, button: "left" | "right") => {
-            setPixels((prev) => {
-                const newPixels = { ...prev };
-                newPixels[`${x},${y}`] = "#000000";
-                return newPixels;
-            });
+            canvasRef.current?.applyPixels({ [`${x},${y}`]: "#000000" });
         }, []);
         
         return (
             <div style={{ width: "100%", height: "100vh", position: "absolute", inset: 0 }}>
                 <PixelCanvas
-                    pixels={pixels}
+                    ref={canvasRef}
                     onPixelClick={handlePixelClick}
                     onPixelDrag={handlePixelDrag}
                 />
@@ -180,7 +186,7 @@ export const Interactive: Story = {
 // Bezier curve test story - shows control points and curve visualization
 export const BezierCurveTest: Story = {
     render: () => {
-        const [pixels, setPixels] = useState<Record<string, string>>({});
+        const canvasRef = useRef<PixelCanvasHandle>(null);
         const [controlPoints, setControlPoints] = useState<Point[]>([]);
         const [curvePoints, setCurvePoints] = useState<Point[]>([]);
         const inputBufferRef = useRef<Point[]>([]);
@@ -203,34 +209,26 @@ export const BezierCurveTest: Story = {
             }
             buffer.forEach(p => points.push(p));
             
-            console.log("🔵 Control points:", points);
             setControlPoints([...points]);
             
             if (points.length >= 2) {
                 // Generate curve
                 const curve = smoothCurveAdaptive(points, 0.5, 2);
-                console.log("🟢 Curve points:", curve);
                 setCurvePoints([...curve]);
                 
                 // Draw pixels along curve
-                setPixels((prev) => {
-                    const newPixels = { ...prev };
-                    curve.forEach(p => {
-                        newPixels[`${p.x},${p.y}`] = "#000000";
-                    });
-                    return newPixels;
+                const delta: PixelDelta = {};
+                curve.forEach(p => {
+                    delta[`${p.x},${p.y}`] = "#000000";
                 });
+                canvasRef.current?.applyPixels(delta);
                 
                 if (curve.length > 0) {
                     lastDrawnRef.current = curve[curve.length - 1];
                 }
             } else if (points.length === 1) {
                 const p = points[0];
-                setPixels((prev) => {
-                    const newPixels = { ...prev };
-                    newPixels[`${p.x},${p.y}`] = "#000000";
-                    return newPixels;
-                });
+                canvasRef.current?.applyPixels({ [`${p.x},${p.y}`]: "#000000" });
                 lastDrawnRef.current = p;
             }
             
@@ -242,13 +240,8 @@ export const BezierCurveTest: Story = {
         }, []);
         
         const handlePixelClick = useCallback((x: number, y: number, button: "left" | "right") => {
-            console.log("🖱️ Click:", { x, y });
             lastDrawnRef.current = { x, y };
-            setPixels((prev) => {
-                const newPixels = { ...prev };
-                newPixels[`${x},${y}`] = "#ff0000"; // Red for control points
-                return newPixels;
-            });
+            canvasRef.current?.applyPixels({ [`${x},${y}`]: "#ff0000" }); // Red for control points
             setControlPoints([{ x, y }]);
             setCurvePoints([]);
         }, []);
@@ -299,7 +292,7 @@ export const BezierCurveTest: Story = {
             <div style={{ width: "100%", height: "100vh", position: "absolute", inset: 0 }}>
                 {debugInfo}
                 <PixelCanvas
-                    pixels={pixels}
+                    ref={canvasRef}
                     onPixelClick={handlePixelClick}
                     onPixelDrag={handlePixelDrag}
                     onMouseUp={handleMouseUp}
@@ -308,4 +301,3 @@ export const BezierCurveTest: Story = {
         );
     },
 };
-

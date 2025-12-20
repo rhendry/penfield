@@ -1,14 +1,14 @@
-import { useState, useCallback, useRef, useEffect } from "react";
-import { PixelCanvas } from "./pixel-canvas";
+import { useCallback, useRef, useEffect } from "react";
+import { PixelCanvas, PixelCanvasHandle } from "./pixel-canvas";
 import { Tool } from "@/components/toolbelt/types";
-import { getTool, ToolContext, PixelUpdater } from "@/tools";
+import { getTool, ToolContext } from "@/tools";
 
 interface PixelEditorProps {
     initialContent: any;
     selectedTool: Tool | null;
     leftClickColor: string;
     rightClickColor: string;
-    onPixelsChange: (pixels: Record<string, string>) => void;
+    onPixelsChange?: (pixels: Record<string, string>) => void;
     className?: string;
 }
 
@@ -20,18 +20,9 @@ export function PixelEditor({
     onPixelsChange,
     className,
 }: PixelEditorProps) {
-    // Pixel data: key is "x,y", value is color string
-    const [pixels, setPixelsState] = useState<Record<string, string>>(
-        initialContent?.grid || {}
-    );
-
-    // Keep a ref to always have the latest pixels (for RAF callbacks)
-    const pixelsRef = useRef(pixels);
-    useEffect(() => {
-        pixelsRef.current = pixels;
-    }, [pixels]);
-
+    const canvasRef = useRef<PixelCanvasHandle>(null);
     const maxSize = 1000;
+    const halfSize = maxSize / 2;
 
     // Track current button being held
     const currentButtonRef = useRef<"left" | "right" | null>(null);
@@ -39,43 +30,43 @@ export function PixelEditor({
     // Track previous tool for activation/deactivation
     const previousToolIdRef = useRef<string | null>(null);
 
-    // Update parent when pixels change (use ref to avoid infinite loop)
+    // Store onPixelsChange in ref to avoid dependency issues
     const onPixelsChangeRef = useRef(onPixelsChange);
     useEffect(() => {
         onPixelsChangeRef.current = onPixelsChange;
     }, [onPixelsChange]);
 
+    // Load initial content
     useEffect(() => {
-        onPixelsChangeRef.current(pixels);
-    }, [pixels]);
-
-    // Wrapper for setPixels that accepts updater function or direct value
-    const setPixels = useCallback((pixelsOrUpdater: Record<string, string> | PixelUpdater) => {
-        if (typeof pixelsOrUpdater === "function") {
-            setPixelsState((prev) => {
-                const newPixels = pixelsOrUpdater(prev);
-                pixelsRef.current = newPixels;
-                return newPixels;
-            });
-        } else {
-            pixelsRef.current = pixelsOrUpdater;
-            setPixelsState(pixelsOrUpdater);
+        if (canvasRef.current && initialContent?.grid) {
+            canvasRef.current.loadPixels(initialContent.grid);
         }
-    }, []);
+    }, [initialContent]);
 
-    // Create tool context - provides read access and mutations
+    // Create tool context - provides canvas access methods
     const createToolContext = useCallback((): ToolContext => {
         return {
-            pixels,
             maxSize,
+            halfSize,
             leftClickColor,
             rightClickColor,
-            getPixels: () => pixelsRef.current,
-            setPixels,
-            requestDraw: (callback: () => void) => requestAnimationFrame(callback),
-            cancelDraw: (id: number) => cancelAnimationFrame(id),
+
+            getPixel: (x: number, y: number) => {
+                return canvasRef.current?.getPixel(x, y) ?? null;
+            },
+
+            applyPixels: (delta) => {
+                canvasRef.current?.applyPixels(delta);
+            },
+
+            requestRender: () => {
+                canvasRef.current?.render();
+            },
+
+            requestFrame: (callback) => requestAnimationFrame(callback),
+            cancelFrame: (id) => cancelAnimationFrame(id),
         };
-    }, [pixels, leftClickColor, rightClickColor, setPixels]);
+    }, [leftClickColor, rightClickColor, halfSize]);
 
     // Handle tool activation/deactivation when selected tool changes
     useEffect(() => {
@@ -122,7 +113,7 @@ export function PixelEditor({
         tool.onPointerMove(x, y, currentButtonRef.current, createToolContext());
     }, [selectedTool, createToolContext]);
 
-    // Handle mouse up - delegate to tool
+    // Handle mouse up - delegate to tool and notify parent
     const handleMouseUp = useCallback(() => {
         if (!selectedTool) return;
 
@@ -132,11 +123,16 @@ export function PixelEditor({
         }
 
         currentButtonRef.current = null;
+
+        // Notify parent of pixel changes (for saving)
+        if (onPixelsChangeRef.current && canvasRef.current) {
+            onPixelsChangeRef.current(canvasRef.current.getAllPixels());
+        }
     }, [selectedTool, createToolContext]);
 
     return (
         <PixelCanvas
-            pixels={pixels}
+            ref={canvasRef}
             onPixelClick={handlePixelClick}
             onPixelDrag={handlePixelDrag}
             onMouseUp={handleMouseUp}

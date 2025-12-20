@@ -1,4 +1,4 @@
-import { PixelTool, ToolContext } from "./types";
+import type { PixelTool, ToolContext, PixelDelta } from "./types";
 
 /**
  * Fill Tool
@@ -9,59 +9,87 @@ import { PixelTool, ToolContext } from "./types";
 
 /**
  * Flood fill algorithm - fills connected pixels of the same color
+ * Uses getPixel for reading and returns a delta for efficient updates
  */
 function floodFill(
-    pixels: Record<string, string>,
+    context: ToolContext,
     startX: number,
     startY: number,
-    fillColor: string,
-    maxSize: number
-): Record<string, string> {
-    const halfSize = maxSize / 2;
-    const startKey = `${startX},${startY}`;
-    const targetColor = pixels[startKey] || null;
+    fillColor: string
+): PixelDelta {
+    const { halfSize, getPixel } = context;
+
+    // Check bounds
+    if (startX < -halfSize || startX >= halfSize || startY < -halfSize || startY >= halfSize) {
+        return {};
+    }
+
+    const targetColor = getPixel(startX, startY);
 
     // If target color is same as fill color, no need to fill
     if (targetColor === fillColor) {
-        return pixels;
+        return {};
     }
 
-    const newPixels = { ...pixels };
+    const delta: PixelDelta = {};
     const visited = new Set<string>();
-    const queue: Array<[number, number]> = [[startX, startY]];
 
-    while (queue.length > 0) {
-        const [x, y] = queue.shift()!;
+    // Use typed array for queue with index tracking (avoids shift() which is O(n))
+    const maxSize = halfSize * 2;
+    const maxQueueSize = maxSize * maxSize;
+    const queueX = new Int16Array(maxQueueSize);
+    const queueY = new Int16Array(maxQueueSize);
+    let queueHead = 0;
+    let queueTail = 0;
+
+    // Enqueue start position
+    queueX[queueTail] = startX;
+    queueY[queueTail] = startY;
+    queueTail++;
+
+    while (queueHead < queueTail) {
+        const x = queueX[queueHead];
+        const y = queueY[queueHead];
+        queueHead++;
+
         const key = `${x},${y}`;
-
-        // Check bounds
-        if (x < -halfSize || x >= halfSize || y < -halfSize || y >= halfSize) {
-            continue;
-        }
 
         // Skip if already visited
         if (visited.has(key)) {
             continue;
         }
 
+        // Check bounds
+        if (x < -halfSize || x >= halfSize || y < -halfSize || y >= halfSize) {
+            continue;
+        }
+
         // Check if this pixel matches the target color
-        const currentColor = newPixels[key] || null;
+        // Use delta first (in case we already filled it), then getPixel
+        const currentColor = delta[key] !== undefined
+            ? delta[key]
+            : getPixel(x, y);
+
         if (currentColor !== targetColor) {
             continue;
         }
 
         // Mark as visited and fill
         visited.add(key);
-        newPixels[key] = fillColor;
+        delta[key] = fillColor;
 
         // Add neighbors to queue (4-directional)
-        queue.push([x + 1, y]);
-        queue.push([x - 1, y]);
-        queue.push([x, y + 1]);
-        queue.push([x, y - 1]);
+        queueX[queueTail] = x + 1;
+        queueY[queueTail++] = y;
+        queueX[queueTail] = x - 1;
+        queueY[queueTail++] = y;
+        queueX[queueTail] = x;
+        queueY[queueTail++] = y + 1;
+        queueX[queueTail] = x;
+        queueY[queueTail++] = y - 1;
     }
 
-    return newPixels;
+    return delta;
 }
 
 export const fillTool: PixelTool = {
@@ -71,29 +99,31 @@ export const fillTool: PixelTool = {
     iconType: "lucide",
     iconName: "PaintBucket",
     hotkey: "3",
-    
+
     onActivate: () => {
         // No state to initialize
     },
-    
+
     onDeactivate: () => {
         // No cleanup needed
     },
-    
+
     onPointerDown: (x, y, button, context) => {
         const color = button === "left" ? context.leftClickColor : context.rightClickColor;
-        const newPixels = floodFill(context.pixels, x, y, color, context.maxSize);
-        context.setPixels(newPixels);
+        const delta = floodFill(context, x, y, color);
+
+        if (Object.keys(delta).length > 0) {
+            context.applyPixels(delta);
+        }
     },
-    
+
     onPointerMove: () => {
         // Fill doesn't respond to drag
     },
-    
+
     onPointerUp: () => {
         // Nothing to do
     },
-    
+
     utilities: undefined,
 };
-

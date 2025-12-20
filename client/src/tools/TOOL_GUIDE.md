@@ -30,28 +30,47 @@ interface PixelTool {
 
 ## Tool Context
 
-The `ToolContext` provides access to editor state and mutations:
+The `ToolContext` provides access to the canvas via an efficient delta-based API:
 
 ```typescript
 interface ToolContext {
-    // Read-only state
-    readonly pixels: Record<string, string>;  // Current pixels (may be stale in RAF)
-    readonly maxSize: number;                 // Canvas size (e.g., 1000)
-    readonly leftClickColor: string;          // Left click color
-    readonly rightClickColor: string;         // Right click color
+    readonly maxSize: number;        // Canvas size (e.g., 1000)
+    readonly halfSize: number;       // Half of maxSize (e.g., 500)
+    readonly leftClickColor: string;
+    readonly rightClickColor: string;
     
-    // Get fresh pixels (safe in async callbacks)
-    getPixels: () => Record<string, string>;
+    // Read a single pixel (returns null if empty)
+    getPixel: (x: number, y: number) => string | null;
     
-    // Update pixels - accepts object OR updater function
-    setPixels: (pixels: Record<string, string> | PixelUpdater) => void;
+    // Apply pixel changes - DELTA ONLY, not full state!
+    // Pass color string to set, null to clear
+    applyPixels: (delta: PixelDelta) => void;
+    
+    // Request immediate render
+    requestRender: () => void;
     
     // RAF helpers
-    requestDraw: (callback: () => void) => number;
-    cancelDraw: (id: number) => void;
+    requestFrame: (callback: () => void) => number;
+    cancelFrame: (id: number) => void;
 }
 
-type PixelUpdater = (prev: Record<string, string>) => Record<string, string>;
+type PixelDelta = Record<string, string | null>;
+```
+
+## Key Concept: Delta-Based Updates
+
+The canvas uses ImageData as the source of truth. Tools pass **deltas** (only changed pixels), not the full pixel state. This is critical for performance:
+
+```typescript
+// ✅ GOOD: Only pass the pixels you're changing
+context.applyPixels({
+    "5,10": "#ff0000",  // Set pixel to red
+    "5,11": "#ff0000",
+    "5,12": null,       // Clear this pixel
+});
+
+// ❌ BAD: Don't try to pass the entire pixel state
+// (This pattern doesn't exist in the new API)
 ```
 
 ## Tool Patterns
@@ -66,10 +85,14 @@ export const fillTool: PixelTool = {
     // ...
     
     onPointerDown: (x, y, button, context) => {
-        // Safe to use context.pixels directly - it's fresh
         const color = button === "left" ? context.leftClickColor : context.rightClickColor;
-        const newPixels = floodFill(context.pixels, x, y, color);
-        context.setPixels(newPixels);
+        
+        // Build delta of all pixels to fill
+        const delta: PixelDelta = {};
+        // ... flood fill algorithm using context.getPixel() ...
+        // ... populate delta with changed pixels ...
+        
+        context.applyPixels(delta);
     },
     
     onPointerMove: () => {
@@ -91,22 +114,30 @@ For tools that buffer input and process asynchronously:
 let isDrawing = false;
 let inputBuffer: Point[] = [];
 let rafId: number | null = null;
+let currentContext: ToolContext | null = null;
 
-function processBuffer(context: ToolContext) {
+function processBuffer() {
+    const context = currentContext;
+    if (!context || inputBuffer.length === 0) {
+        rafId = null;
+        return;
+    }
+    
     const buffer = [...inputBuffer];
     inputBuffer = [];
     
-    // ⚠️ CRITICAL: Use updater function for RAF callbacks!
-    // context.pixels may be stale by the time RAF fires
-    context.setPixels((prev) => {
-        const newPixels = { ...prev };
-        // ... modify newPixels ...
-        return newPixels;
+    // Build delta from buffer
+    const delta: PixelDelta = {};
+    buffer.forEach(p => {
+        delta[`${p.x},${p.y}`] = context.leftClickColor;
     });
     
-    // Schedule next frame if more input
+    // Apply delta
+    context.applyPixels(delta);
+    
+    // Continue processing if more input
     if (inputBuffer.length > 0) {
-        rafId = context.requestDraw(() => processBuffer(context));
+        rafId = context.requestFrame(processBuffer);
     } else {
         rafId = null;
     }
@@ -117,105 +148,76 @@ export const penTool: PixelTool = {
     // ...
     
     onActivate: () => {
-        // Reset state when tool becomes active
         isDrawing = false;
         inputBuffer = [];
         rafId = null;
+        currentContext = null;
     },
     
     onDeactivate: (context) => {
-        // Cleanup when switching tools
         if (rafId !== null) {
-            context.cancelDraw(rafId);
+            context.cancelFrame(rafId);
         }
         isDrawing = false;
         inputBuffer = [];
+        currentContext = null;
     },
     
     onPointerDown: (x, y, button, context) => {
         isDrawing = true;
-        // Draw initial pixel synchronously (context.pixels is fresh here)
-        const newPixels = { ...context.pixels };
-        newPixels[`${x},${y}`] = context.leftClickColor;
-        context.setPixels(newPixels);
+        currentContext = context;
+        
+        // Draw initial pixel
+        context.applyPixels({ [`${x},${y}`]: context.leftClickColor });
     },
     
     onPointerMove: (x, y, button, context) => {
         if (!isDrawing || button === null) return;
         
-        // Buffer input
+        currentContext = context;
         inputBuffer.push({ x, y });
         
-        // Schedule processing
         if (rafId === null) {
-            rafId = context.requestDraw(() => processBuffer(context));
+            rafId = context.requestFrame(processBuffer);
         }
     },
     
     onPointerUp: (context) => {
-        // Flush remaining buffer
+        currentContext = context;
+        
         if (inputBuffer.length > 0) {
-            processBuffer(context);
+            processBuffer();
         }
+        
         isDrawing = false;
         inputBuffer = [];
+        currentContext = null;
+        
+        if (rafId !== null) {
+            context.cancelFrame(rafId);
+            rafId = null;
+        }
     },
 };
 ```
 
-## ⚠️ Critical: Stale Closure Warning
+## Important: Context Reference in RAF
 
-When using `requestAnimationFrame` (via `context.requestDraw`), the `context.pixels` value captured at schedule time may be **stale** by the time the callback runs.
-
-### ❌ Wrong - Will lose pixels:
+When using `requestFrame`, the context passed to your callback may be stale. Store the latest context in a module-level variable:
 
 ```typescript
-function processBuffer(context: ToolContext) {
-    // BAD: context.pixels was captured when RAF was scheduled
-    // Other setPixels calls may have happened since then
-    const newPixels = { ...context.pixels };
-    newPixels[`${x},${y}`] = color;
-    context.setPixels(newPixels);  // Overwrites recent changes!
+let currentContext: ToolContext | null = null;
+
+function processBuffer() {
+    const context = currentContext;  // Use stored context
+    if (!context) return;
+    // ...
 }
-```
 
-### ✅ Correct - Use updater function:
-
-```typescript
-function processBuffer(context: ToolContext) {
-    // GOOD: Updater receives the LATEST pixels
-    context.setPixels((prev) => {
-        const newPixels = { ...prev };
-        newPixels[`${x},${y}`] = color;
-        return newPixels;
-    });
+onPointerMove: (x, y, button, context) => {
+    currentContext = context;  // Always update
+    // ...
 }
-```
-
-## Tool State Management
-
-Tools can maintain module-level state that persists across pointer events:
-
-```typescript
-// Module-level state
-let lastPoint: Point | null = null;
-let isActive = false;
-
-export const myTool: PixelTool = {
-    onActivate: () => {
-        // Initialize state
-        lastPoint = null;
-        isActive = false;
-    },
-    
-    onDeactivate: () => {
-        // Cleanup state
-        lastPoint = null;
-        isActive = false;
-    },
-    
-    // ... use lastPoint and isActive in handlers
-};
 ```
 
 ## Coordinate System
@@ -223,11 +225,10 @@ export const myTool: PixelTool = {
 - Canvas center is `(0, 0)`
 - X increases to the right
 - Y increases downward
-- Valid range: `-maxSize/2` to `maxSize/2 - 1` (e.g., -500 to 499)
+- Valid range: `-halfSize` to `halfSize - 1` (e.g., -500 to 499)
 
 ```typescript
-function isInBounds(x: number, y: number, maxSize: number): boolean {
-    const halfSize = maxSize / 2;
+function isInBounds(x: number, y: number, halfSize: number): boolean {
     return x >= -halfSize && x < halfSize && y >= -halfSize && y < halfSize;
 }
 ```
@@ -251,14 +252,31 @@ And add it to the default toolbelt in `pixel-editor-tools.tsx` if desired.
 
 | Tool | Pattern | Key Characteristic |
 |------|---------|-------------------|
-| Fill | Sync | Single click, immediate result |
-| Pen | Async + Bezier | Buffered input, curve smoothing |
-| Eraser | Async + Bezier | Same as pen, deletes instead |
+| Fill | Sync | Single click, builds delta via flood fill |
+| Pen | Async + Bezier | Buffered input, curve smoothing, incremental delta |
+| Eraser | Async + Bezier | Same as pen, but delta has null values |
 | Selection | Async | Tracks bounds, doesn't modify pixels |
 | Shape | Async | Preview on move, commit on release |
-| Spray Paint | Async | Random scatter, no smoothing |
+
+## Performance Notes
+
+### Why Delta-Based?
+
+The canvas uses `ImageData` (a typed array) as the source of truth:
+- Applying a delta of 100 pixels = O(100) operations
+- This is true even if the canvas has 1,000,000 pixels filled
+
+### Reading Pixels
+
+`getPixel(x, y)` reads directly from ImageData. It's fast for individual reads but avoid calling it in tight loops if possible. For flood fill, reading each visited pixel is acceptable.
+
+### Large Fills
+
+The fill tool may generate a delta with 1M entries for a full canvas fill. This is handled efficiently:
+1. Building the delta: O(n) where n = filled pixels
+2. Applying the delta: O(n) 
+3. Rendering: O(1) - just `putImageData`
 
 ## Utilities
 
 Tools can provide custom UI via the `utilities` property. These render in the utilities panel when the tool is selected. For now, utilities are wired up in `pixel-editor-page.tsx` based on tool ID.
-

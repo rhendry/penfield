@@ -1,4 +1,4 @@
-import { PixelTool, ToolContext } from "./types";
+import type { PixelTool, ToolContext, PixelDelta } from "./types";
 import { smoothCurveAdaptive, type Point } from "@/lib/bezier";
 
 /**
@@ -14,10 +14,12 @@ let currentButton: "left" | "right" = "left";
 let lastDrawnPoint: Point | null = null;
 let inputBuffer: Point[] = [];
 let rafId: number | null = null;
+let currentContext: ToolContext | null = null;
 
 // Process buffered input with Bezier smoothing
-function processBuffer(context: ToolContext) {
-    if (inputBuffer.length === 0) {
+function processBuffer() {
+    const context = currentContext;
+    if (!context || inputBuffer.length === 0) {
         rafId = null;
         return;
     }
@@ -35,21 +37,19 @@ function processBuffer(context: ToolContext) {
     const color = currentButton === "left"
         ? context.leftClickColor
         : context.rightClickColor;
-    const halfSize = context.maxSize / 2;
+
+    const delta: PixelDelta = {};
 
     if (points.length >= 2) {
         // Generate smooth Bezier curve
         const curve = smoothCurveAdaptive(points, 0.5, 2);
 
-        // Draw all curve points - use getPixels() for latest state in RAF callback
-        context.setPixels((prev) => {
-            const newPixels = { ...prev };
-            curve.forEach(p => {
-                if (p.x >= -halfSize && p.x < halfSize && p.y >= -halfSize && p.y < halfSize) {
-                    newPixels[`${p.x},${p.y}`] = color;
-                }
-            });
-            return newPixels;
+        // Add all curve points to delta
+        curve.forEach(p => {
+            if (p.x >= -context.halfSize && p.x < context.halfSize &&
+                p.y >= -context.halfSize && p.y < context.halfSize) {
+                delta[`${p.x},${p.y}`] = color;
+            }
         });
 
         // Update last drawn point for continuity
@@ -59,19 +59,21 @@ function processBuffer(context: ToolContext) {
     } else if (points.length === 1) {
         // Single point - draw directly
         const p = points[0];
-        if (p.x >= -halfSize && p.x < halfSize && p.y >= -halfSize && p.y < halfSize) {
-            context.setPixels((prev) => {
-                const newPixels = { ...prev };
-                newPixels[`${p.x},${p.y}`] = color;
-                return newPixels;
-            });
+        if (p.x >= -context.halfSize && p.x < context.halfSize &&
+            p.y >= -context.halfSize && p.y < context.halfSize) {
+            delta[`${p.x},${p.y}`] = color;
         }
         lastDrawnPoint = p;
     }
 
+    // Apply delta to canvas
+    if (Object.keys(delta).length > 0) {
+        context.applyPixels(delta);
+    }
+
     // Continue processing if more input arrived
     if (inputBuffer.length > 0) {
-        rafId = context.requestDraw(() => processBuffer(context));
+        rafId = context.requestFrame(processBuffer);
     } else {
         rafId = null;
     }
@@ -91,59 +93,67 @@ export const penTool: PixelTool = {
         lastDrawnPoint = null;
         inputBuffer = [];
         rafId = null;
+        currentContext = null;
     },
 
     onDeactivate: (context) => {
         // Cleanup when switching away from this tool
         if (rafId !== null) {
-            context.cancelDraw(rafId);
+            context.cancelFrame(rafId);
             rafId = null;
         }
         isDrawing = false;
         lastDrawnPoint = null;
         inputBuffer = [];
+        currentContext = null;
     },
 
     onPointerDown: (x, y, button, context) => {
         isDrawing = true;
         currentButton = button;
+        currentContext = context;
         lastDrawnPoint = { x, y };
 
         // Draw initial pixel
         const color = button === "left" ? context.leftClickColor : context.rightClickColor;
-        const halfSize = context.maxSize / 2;
-        if (x >= -halfSize && x < halfSize && y >= -halfSize && y < halfSize) {
-            const newPixels = { ...context.pixels };
-            newPixels[`${x},${y}`] = color;
-            context.setPixels(newPixels);
+        if (x >= -context.halfSize && x < context.halfSize &&
+            y >= -context.halfSize && y < context.halfSize) {
+            context.applyPixels({ [`${x},${y}`]: color });
         }
     },
 
     onPointerMove: (x, y, button, context) => {
         if (!isDrawing || button === null) return;
 
+        // Update context reference for RAF callback
+        currentContext = context;
+
         // Buffer input for batch processing
         inputBuffer.push({ x, y });
 
         // Schedule processing if not already scheduled
         if (rafId === null) {
-            rafId = context.requestDraw(() => processBuffer(context));
+            rafId = context.requestFrame(processBuffer);
         }
     },
 
     onPointerUp: (context) => {
+        // Update context for final processing
+        currentContext = context;
+
         // Flush any remaining buffered input
         if (inputBuffer.length > 0) {
-            processBuffer(context);
+            processBuffer();
         }
 
         // Reset drawing state
         isDrawing = false;
         lastDrawnPoint = null;
         inputBuffer = [];
+        currentContext = null;
 
         if (rafId !== null) {
-            context.cancelDraw(rafId);
+            context.cancelFrame(rafId);
             rafId = null;
         }
     },
@@ -151,4 +161,3 @@ export const penTool: PixelTool = {
     // Utilities are set dynamically by the page
     utilities: undefined,
 };
-

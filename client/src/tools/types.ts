@@ -1,31 +1,48 @@
 import { ReactNode } from "react";
 
 /**
- * Pixel updater function - receives current pixels, returns new pixels
+ * Pixel delta - keys are "x,y", values are color (string) or null to clear
  */
-export type PixelUpdater = (prev: Record<string, string>) => Record<string, string>;
+export type PixelDelta = Record<string, string | null>;
 
 /**
  * Tool context passed to tool event handlers
- * Provides read access to state and write access via setPixels
+ * Uses a canvas-based pixel buffer for efficient rendering
  */
 export interface ToolContext {
-    // Read-only state (may be stale in RAF callbacks - use getPixels() for latest)
-    readonly pixels: Record<string, string>;
     readonly maxSize: number;
+    readonly halfSize: number;
     readonly leftClickColor: string;
     readonly rightClickColor: string;
     
-    // Get the latest pixels (safe to call in RAF callbacks)
-    getPixels: () => Record<string, string>;
+    /**
+     * Get pixel color at coordinates
+     * Returns null if pixel is empty/transparent
+     */
+    getPixel: (x: number, y: number) => string | null;
     
-    // Mutations - tools call these to update editor state
-    // Can pass either new pixels object or an updater function
-    setPixels: (pixels: Record<string, string> | PixelUpdater) => void;
+    /**
+     * Apply pixel changes (delta only - not full state)
+     * Pass color string to set, null to clear
+     */
+    applyPixels: (delta: PixelDelta) => void;
     
-    // Helper for batched rendering - tools can use this for RAF-based updates
-    requestDraw: (callback: () => void) => number;
-    cancelDraw: (id: number) => void;
+    /**
+     * Request a render on next animation frame
+     * Use this when batching multiple applyPixels calls
+     */
+    requestRender: () => void;
+    
+    /**
+     * Schedule a callback on next animation frame
+     * Returns ID that can be passed to cancelFrame
+     */
+    requestFrame: (callback: () => void) => number;
+    
+    /**
+     * Cancel a scheduled frame callback
+     */
+    cancelFrame: (id: number) => void;
 }
 
 /**
@@ -99,19 +116,3 @@ export interface PixelTool {
     utilities?: ReactNode | ReactNode[];
 }
 
-// Re-export old types for backwards compatibility during migration
-// TODO: Remove these after all tools are migrated
-export interface LegacyToolContext {
-    pixels: Record<string, string>;
-    maxSize: number;
-    leftClickColor: string;
-    rightClickColor: string;
-    isShiftPressed: boolean;
-    lastDrawnPixel: { x: number; y: number } | null;
-    initialClickPosition: { x: number; y: number } | null;
-}
-
-export interface LegacyToolResult {
-    pixels: Record<string, string>;
-    lastDrawnPixel?: { x: number; y: number } | null;
-}

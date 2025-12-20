@@ -1,5 +1,6 @@
-import { useRef, useState, useEffect, useCallback } from "react";
+import { useRef, useState, useEffect, useCallback, useImperativeHandle, forwardRef } from "react";
 import { cn } from "@/lib/utils";
+import type { PixelDelta } from "@/tools/types";
 
 export interface PixelCanvasProps {
     /** Maximum canvas size in pixels (width and height) */
@@ -14,8 +15,6 @@ export interface PixelCanvasProps {
     xAxisColor?: string;
     /** Color for y-axis line */
     yAxisColor?: string;
-    /** Pixel data: key is "x,y", value is color string */
-    pixels?: Record<string, string>;
     /** Callback when a pixel is clicked */
     onPixelClick?: (x: number, y: number, button: "left" | "right") => void;
     /** Callback when dragging over pixels */
@@ -27,25 +26,105 @@ export interface PixelCanvasProps {
 }
 
 /**
+ * Imperative handle exposed by PixelCanvas
+ */
+export interface PixelCanvasHandle {
+    /** Get pixel color at coordinates (null if empty) */
+    getPixel: (x: number, y: number) => string | null;
+    /** Apply pixel changes - pass color to set, null to clear */
+    applyPixels: (delta: PixelDelta) => void;
+    /** Trigger a render (call after applyPixels if batching) */
+    render: () => void;
+    /** Get all pixels as a Record (for serialization) */
+    getAllPixels: () => Record<string, string>;
+    /** Clear all pixels */
+    clear: () => void;
+    /** Load pixels from a Record (for deserialization) */
+    loadPixels: (pixels: Record<string, string>) => void;
+}
+
+/**
+ * Parse a CSS color string to RGBA values (0-255)
+ */
+function parseColor(color: string): [number, number, number, number] {
+    // Handle rgba/rgb
+    const rgbaMatch = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+    if (rgbaMatch) {
+        return [
+            parseInt(rgbaMatch[1], 10),
+            parseInt(rgbaMatch[2], 10),
+            parseInt(rgbaMatch[3], 10),
+            rgbaMatch[4] ? Math.round(parseFloat(rgbaMatch[4]) * 255) : 255
+        ];
+    }
+    
+    // Handle hex colors
+    let hex = color;
+    if (hex.startsWith('#')) {
+        hex = hex.slice(1);
+    }
+    
+    if (hex.length === 3) {
+        hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+    }
+    
+    if (hex.length === 6) {
+        return [
+            parseInt(hex.slice(0, 2), 16),
+            parseInt(hex.slice(2, 4), 16),
+            parseInt(hex.slice(4, 6), 16),
+            255
+        ];
+    }
+    
+    if (hex.length === 8) {
+        return [
+            parseInt(hex.slice(0, 2), 16),
+            parseInt(hex.slice(2, 4), 16),
+            parseInt(hex.slice(4, 6), 16),
+            parseInt(hex.slice(6, 8), 16)
+        ];
+    }
+    
+    // Fallback to black
+    return [0, 0, 0, 255];
+}
+
+/**
+ * Convert RGBA values to a CSS color string
+ */
+function rgbaToString(r: number, g: number, b: number, a: number): string {
+    if (a === 255) {
+        return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+    }
+    return `rgba(${r},${g},${b},${(a / 255).toFixed(2)})`;
+}
+
+/**
  * PixelCanvas - Infinite zoomable, pannable grid for creating pixel art.
+ * Uses ImageData as source of truth for efficient pixel operations.
  * Supports mousewheel zoom and middle-click drag panning.
  */
-export function PixelCanvas({
+export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(function PixelCanvas({
     maxSize = 1000,
     defaultZoomPixels = 50,
     backgroundColor = "#ffffff",
     gridLineColor = "#e5e5e5",
     xAxisColor = "#3b82f6",
     yAxisColor = "#3b82f6",
-    pixels = {},
     onPixelClick,
     onPixelDrag,
     onMouseUp,
     className,
-}: PixelCanvasProps) {
+}, ref) {
     const containerRef = useRef<HTMLDivElement>(null);
     const svgRef = useRef<SVGSVGElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    
+    // ImageData is the source of truth for pixel data
+    const imageDataRef = useRef<ImageData | null>(null);
+    const needsRenderRef = useRef(false);
+    const renderScheduledRef = useRef(false);
     
     // Get container dimensions
     const [containerSize, setContainerSize] = useState({ width: 800, height: 600 });
@@ -66,21 +145,23 @@ export function PixelCanvas({
     // Track if we've initialized
     const [isInitialized, setIsInitialized] = useState(false);
     
+    // Force re-render trigger
+    const [renderTrigger, setRenderTrigger] = useState(0);
+    
+    const halfSize = maxSize / 2;
+    
+    // Initialize ImageData
+    useEffect(() => {
+        imageDataRef.current = new ImageData(maxSize, maxSize);
+        return () => {
+            imageDataRef.current = null;
+        };
+    }, [maxSize]);
+    
     // Clamp pan to boundaries
-    // Pan coordinates are in screen space. ViewBox shows canvas coordinates.
-    // Canvas goes from -halfSize to +halfSize.
-    // viewBoxX = -panX/zoom, viewBoxWidth = containerWidth/zoom
-    // We want: -halfSize <= viewBoxX and viewBoxX + viewBoxWidth <= halfSize
-    // So: -halfSize <= -panX/zoom → panX <= halfSize * zoom
-    // And: -panX/zoom + containerWidth/zoom <= halfSize → panX >= containerWidth - halfSize * zoom
     const clampPan = useCallback((x: number, y: number, currentZoom: number, containerWidth: number, containerHeight: number) => {
-        const halfSize = maxSize / 2;
-        
-        // Clamp panX: ensure viewBox stays within [-halfSize, halfSize]
         const minPanX = containerWidth - halfSize * currentZoom;
         const maxPanX = halfSize * currentZoom;
-        
-        // Clamp panY similarly
         const minPanY = containerHeight - halfSize * currentZoom;
         const maxPanY = halfSize * currentZoom;
         
@@ -88,7 +169,7 @@ export function PixelCanvas({
             x: Math.max(minPanX, Math.min(maxPanX, x)),
             y: Math.max(minPanY, Math.min(maxPanY, y)),
         };
-    }, [maxSize]);
+    }, [halfSize]);
     
     // Update container size and calculate initial zoom
     useEffect(() => {
@@ -98,19 +179,14 @@ export function PixelCanvas({
             const height = containerRef.current.clientHeight || 600;
             setContainerSize({ width, height });
             
-            // Calculate initial zoom to show defaultZoomPixels in vertical dimension (only once)
             if (!isInitialized && height > 0 && width > 0) {
                 const initialZoom = height / defaultZoomPixels;
-                // Max zoom ensures the entire canvas fits (use smaller ratio)
-                const maxZoom = Math.min(width / maxSize, height / maxSize);
-                const clampedZoom = Math.max(maxZoom, initialZoom);
+                const maxZoomOut = Math.min(width / maxSize, height / maxSize);
+                const clampedZoom = Math.max(maxZoomOut, initialZoom);
                 setZoom(clampedZoom);
-                // Center the view at origin (0, 0)
-                // When panX = width/2, viewBoxX = -width/(2*zoom), showing center at 0
+                
                 const initialPanX = width / 2;
                 const initialPanY = height / 2;
-                // Clamp to ensure we stay within boundaries
-                const halfSize = maxSize / 2;
                 const minPanX = width - halfSize * clampedZoom;
                 const maxPanX = halfSize * clampedZoom;
                 const minPanY = height - halfSize * clampedZoom;
@@ -123,7 +199,6 @@ export function PixelCanvas({
         
         updateSize();
         
-        // Use ResizeObserver for better size tracking
         const resizeObserver = new ResizeObserver(updateSize);
         if (containerRef.current) {
             resizeObserver.observe(containerRef.current);
@@ -134,17 +209,171 @@ export function PixelCanvas({
             resizeObserver.disconnect();
             window.removeEventListener("resize", updateSize);
         };
-    }, [defaultZoomPixels, isInitialized, maxSize]);
+    }, [defaultZoomPixels, isInitialized, maxSize, halfSize]);
     
     // Calculate max zoom to prevent seeing beyond boundaries
     const calculateMaxZoom = useCallback(() => {
         if (!containerRef.current) return 100;
         const containerWidth = containerRef.current.clientWidth || 800;
         const containerHeight = containerRef.current.clientHeight || 600;
-        // Max zoom should ensure at least one dimension fits the full canvas
-        // Use the smaller ratio to ensure the entire canvas is visible
         return Math.min(containerWidth / maxSize, containerHeight / maxSize);
     }, [maxSize]);
+    
+    // Get pixel color from ImageData
+    const getPixel = useCallback((x: number, y: number): string | null => {
+        const imageData = imageDataRef.current;
+        if (!imageData) return null;
+        
+        // Convert from centered coords to ImageData coords
+        const imgX = x + halfSize;
+        const imgY = y + halfSize;
+        
+        if (imgX < 0 || imgX >= maxSize || imgY < 0 || imgY >= maxSize) {
+            return null;
+        }
+        
+        const idx = (imgY * maxSize + imgX) * 4;
+        const r = imageData.data[idx];
+        const g = imageData.data[idx + 1];
+        const b = imageData.data[idx + 2];
+        const a = imageData.data[idx + 3];
+        
+        if (a === 0) return null;
+        
+        return rgbaToString(r, g, b, a);
+    }, [halfSize, maxSize]);
+    
+    // Apply pixel delta to ImageData
+    const applyPixels = useCallback((delta: PixelDelta) => {
+        const imageData = imageDataRef.current;
+        if (!imageData) return;
+        
+        for (const key in delta) {
+            const commaIdx = key.indexOf(",");
+            const x = parseInt(key.slice(0, commaIdx), 10);
+            const y = parseInt(key.slice(commaIdx + 1), 10);
+            
+            const imgX = x + halfSize;
+            const imgY = y + halfSize;
+            
+            if (imgX < 0 || imgX >= maxSize || imgY < 0 || imgY >= maxSize) {
+                continue;
+            }
+            
+            const idx = (imgY * maxSize + imgX) * 4;
+            const color = delta[key];
+            
+            if (color === null) {
+                // Clear pixel
+                imageData.data[idx] = 0;
+                imageData.data[idx + 1] = 0;
+                imageData.data[idx + 2] = 0;
+                imageData.data[idx + 3] = 0;
+            } else {
+                const [r, g, b, a] = parseColor(color);
+                imageData.data[idx] = r;
+                imageData.data[idx + 1] = g;
+                imageData.data[idx + 2] = b;
+                imageData.data[idx + 3] = a;
+            }
+        }
+        
+        needsRenderRef.current = true;
+        
+        // Auto-schedule render if not already scheduled
+        if (!renderScheduledRef.current) {
+            renderScheduledRef.current = true;
+            requestAnimationFrame(() => {
+                renderScheduledRef.current = false;
+                if (needsRenderRef.current) {
+                    needsRenderRef.current = false;
+                    setRenderTrigger(t => t + 1);
+                }
+            });
+        }
+    }, [halfSize, maxSize]);
+    
+    // Force render
+    const render = useCallback(() => {
+        setRenderTrigger(t => t + 1);
+    }, []);
+    
+    // Get all pixels as Record (for serialization)
+    const getAllPixels = useCallback((): Record<string, string> => {
+        const imageData = imageDataRef.current;
+        if (!imageData) return {};
+        
+        const result: Record<string, string> = {};
+        
+        for (let y = 0; y < maxSize; y++) {
+            for (let x = 0; x < maxSize; x++) {
+                const idx = (y * maxSize + x) * 4;
+                const a = imageData.data[idx + 3];
+                
+                if (a > 0) {
+                    const r = imageData.data[idx];
+                    const g = imageData.data[idx + 1];
+                    const b = imageData.data[idx + 2];
+                    const canvasX = x - halfSize;
+                    const canvasY = y - halfSize;
+                    result[`${canvasX},${canvasY}`] = rgbaToString(r, g, b, a);
+                }
+            }
+        }
+        
+        return result;
+    }, [maxSize, halfSize]);
+    
+    // Clear all pixels
+    const clear = useCallback(() => {
+        const imageData = imageDataRef.current;
+        if (!imageData) return;
+        
+        imageData.data.fill(0);
+        setRenderTrigger(t => t + 1);
+    }, []);
+    
+    // Load pixels from Record
+    const loadPixels = useCallback((pixels: Record<string, string>) => {
+        const imageData = imageDataRef.current;
+        if (!imageData) return;
+        
+        // Clear first
+        imageData.data.fill(0);
+        
+        // Load pixels
+        for (const key in pixels) {
+            const commaIdx = key.indexOf(",");
+            const x = parseInt(key.slice(0, commaIdx), 10);
+            const y = parseInt(key.slice(commaIdx + 1), 10);
+            
+            const imgX = x + halfSize;
+            const imgY = y + halfSize;
+            
+            if (imgX < 0 || imgX >= maxSize || imgY < 0 || imgY >= maxSize) {
+                continue;
+            }
+            
+            const idx = (imgY * maxSize + imgX) * 4;
+            const [r, g, b, a] = parseColor(pixels[key]);
+            imageData.data[idx] = r;
+            imageData.data[idx + 1] = g;
+            imageData.data[idx + 2] = b;
+            imageData.data[idx + 3] = a;
+        }
+        
+        setRenderTrigger(t => t + 1);
+    }, [halfSize, maxSize]);
+    
+    // Expose imperative handle
+    useImperativeHandle(ref, () => ({
+        getPixel,
+        applyPixels,
+        render,
+        getAllPixels,
+        clear,
+        loadPixels,
+    }), [getPixel, applyPixels, render, getAllPixels, clear, loadPixels]);
     
     // Handle mousewheel zoom
     const handleWheel = useCallback((e: WheelEvent) => {
@@ -156,38 +385,30 @@ export function PixelCanvas({
         const mouseX = e.clientX - rect.left;
         const mouseY = e.clientY - rect.top;
         
-        // Zoom factor
         const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
-        const maxZoom = calculateMaxZoom();
-        const newZoom = Math.max(maxZoom, Math.min(100, zoom * zoomFactor));
+        const maxZoomOut = calculateMaxZoom();
+        const newZoom = Math.max(maxZoomOut, Math.min(100, zoom * zoomFactor));
         
-        // Calculate mouse position in canvas coordinates before zoom
         const canvasX = (mouseX - panX) / zoom;
         const canvasY = (mouseY - panY) / zoom;
         
-        // Adjust pan to zoom towards mouse position
         let newPanX = mouseX - canvasX * newZoom;
         let newPanY = mouseY - canvasY * newZoom;
         
-        // Clamp pan to boundaries
         const clamped = clampPan(newPanX, newPanY, newZoom, rect.width, rect.height);
         
-        // If clamping changed the pan significantly, try to maintain center instead
         const panChangedX = Math.abs(clamped.x - newPanX) > 1;
         const panChangedY = Math.abs(clamped.y - newPanY) > 1;
         
         if (panChangedX || panChangedY) {
-            // Try to keep center of view stable
             const centerX = rect.width / 2;
             const centerY = rect.height / 2;
             const centerCanvasX = (-panX + centerX) / zoom;
             const centerCanvasY = (-panY + centerY) / zoom;
             
-            // Calculate pan to keep center at same canvas position
             const centeredPanX = centerX - centerCanvasX * newZoom;
             const centeredPanY = centerY - centerCanvasY * newZoom;
             
-            // Clamp the centered pan
             const centeredClamped = clampPan(centeredPanX, centeredPanY, newZoom, rect.width, rect.height);
             
             setZoom(newZoom);
@@ -211,9 +432,9 @@ export function PixelCanvas({
         return { x: canvasX, y: canvasY };
     }, [panX, panY, zoom]);
 
-    // Handle mouse down (middle button for pan, left/right for drawing)
+    // Handle mouse down
     const handleMouseDown = useCallback((e: React.MouseEvent) => {
-        if (e.button === 1) { // Middle mouse button - pan
+        if (e.button === 1) {
             e.preventDefault();
             e.stopPropagation();
             setIsPanning(true);
@@ -221,7 +442,7 @@ export function PixelCanvas({
                 x: e.clientX - panX,
                 y: e.clientY - panY,
             });
-        } else if (e.button === 0 || e.button === 2) { // Left or right button - drawing
+        } else if (e.button === 0 || e.button === 2) {
             e.preventDefault();
             e.stopPropagation();
             const button = e.button === 0 ? "left" : "right";
@@ -255,7 +476,6 @@ export function PixelCanvas({
             const newPanX = e.clientX - panStart.x;
             const newPanY = e.clientY - panStart.y;
             
-            // Clamp pan to boundaries
             const rect = containerRef.current.getBoundingClientRect();
             const clamped = clampPan(newPanX, newPanY, zoom, rect.width, rect.height);
             
@@ -294,73 +514,66 @@ export function PixelCanvas({
         };
     }, [handleWheel, handleMouseMove, handleMouseUp]);
     
-    // Calculate grid dimensions
-    const gridSize = maxSize;
-    const halfSize = gridSize / 2;
-    
-    // Calculate visible range in canvas coordinates
-    // Convert screen coordinates to canvas coordinates
+    // Calculate visible range
     const startX = Math.floor((-panX / zoom) - 1);
     const endX = Math.ceil((-panX + containerSize.width) / zoom + 1);
     const startY = Math.floor((-panY / zoom) - 1);
     const endY = Math.ceil((-panY + containerSize.height) / zoom + 1);
     
-    // Clamp to canvas bounds
     const clampedStartX = Math.max(-halfSize, startX);
     const clampedEndX = Math.min(halfSize, endX);
     const clampedStartY = Math.max(-halfSize, startY);
     const clampedEndY = Math.min(halfSize, endY);
     
-    // Ensure we have valid ranges
     const numVerticalLines = Math.max(0, clampedEndX - clampedStartX + 1);
     const numHorizontalLines = Math.max(0, clampedEndY - clampedStartY + 1);
     
-    // Calculate the viewBox and transform for the SVG coordinate system
-    // We want to show canvas coordinates, so we transform the viewBox
     const viewBoxX = -panX / zoom;
     const viewBoxY = -panY / zoom;
     const viewBoxWidth = containerSize.width / zoom;
     const viewBoxHeight = containerSize.height / zoom;
     
-    // Render pixels to canvas (much more efficient than SVG rects)
+    // Render ImageData to display canvas
     useEffect(() => {
         const canvas = canvasRef.current;
-        if (!canvas) return;
+        const imageData = imageDataRef.current;
+        if (!canvas || !imageData) return;
         
         const ctx = canvas.getContext("2d");
         if (!ctx) return;
         
-        // Set canvas size to match container (with device pixel ratio for sharpness)
         const dpr = window.devicePixelRatio || 1;
-        canvas.width = containerSize.width * dpr;
-        canvas.height = containerSize.height * dpr;
+        const displayWidth = containerSize.width;
+        const displayHeight = containerSize.height;
+        
+        canvas.width = displayWidth * dpr;
+        canvas.height = displayHeight * dpr;
         ctx.scale(dpr, dpr);
+        ctx.imageSmoothingEnabled = false;
         
-        // Clear canvas
-        ctx.clearRect(0, 0, containerSize.width, containerSize.height);
+        ctx.clearRect(0, 0, displayWidth, displayHeight);
         
-        // Draw each pixel - only iterate visible area for large datasets
-        const pixelEntries = Object.entries(pixels);
-        for (let i = 0; i < pixelEntries.length; i++) {
-            const [key, color] = pixelEntries[i];
-            const commaIdx = key.indexOf(",");
-            const x = parseInt(key.slice(0, commaIdx), 10);
-            const y = parseInt(key.slice(commaIdx + 1), 10);
-            
-            // Skip pixels outside visible area
-            if (x < clampedStartX - 1 || x > clampedEndX + 1 || 
-                y < clampedStartY - 1 || y > clampedEndY + 1) {
-                continue;
-            }
-            
-            // Convert canvas coordinates to screen coordinates
-            const screenX = (x * zoom) + panX;
-            const screenY = (y * zoom) + panY;
-            
-            ctx.fillStyle = color;
-            ctx.fillRect(screenX, screenY, zoom, zoom);
-        }
-    }, [pixels, zoom, panX, panY, containerSize, clampedStartX, clampedEndX, clampedStartY, clampedEndY]);
+        // Create temporary canvas for ImageData
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = maxSize;
+        tempCanvas.height = maxSize;
+        const tempCtx = tempCanvas.getContext('2d');
+        if (!tempCtx) return;
+        
+        tempCtx.putImageData(imageData, 0, 0);
+        
+        // Calculate source rect
+        const srcX = viewBoxX + halfSize;
+        const srcY = viewBoxY + halfSize;
+        const srcWidth = viewBoxWidth;
+        const srcHeight = viewBoxHeight;
+        
+        ctx.drawImage(
+            tempCanvas,
+            srcX, srcY, srcWidth, srcHeight,
+            0, 0, displayWidth, displayHeight
+        );
+    }, [renderTrigger, zoom, panX, panY, containerSize, viewBoxX, viewBoxY, viewBoxWidth, viewBoxHeight, maxSize, halfSize]);
 
     return (
         <div
@@ -368,16 +581,14 @@ export function PixelCanvas({
             className={cn("w-full h-full overflow-hidden relative", className)}
             style={{ backgroundColor, width: "100%", height: "100%" }}
             onMouseDown={handleMouseDown}
-            onContextMenu={(e) => e.preventDefault()} // Prevent context menu on right click
+            onContextMenu={(e) => e.preventDefault()}
         >
-            {/* Canvas layer for pixels (efficient rendering) */}
             <canvas
                 ref={canvasRef}
                 className="absolute inset-0 w-full h-full"
                 style={{ pointerEvents: "none" }}
             />
             
-            {/* SVG layer for grid lines */}
             <svg
                 ref={svgRef}
                 className="absolute inset-0 w-full h-full"
@@ -387,11 +598,9 @@ export function PixelCanvas({
                 preserveAspectRatio="none"
                 style={{ pointerEvents: "none" }}
             >
-                {/* Grid lines - vertical */}
                 {numVerticalLines > 0 && Array.from({ length: numVerticalLines }, (_, i) => {
                     const x = clampedStartX + i;
                     const isAxis = x === 0;
-                    // Stroke width in canvas coordinates (will scale with viewBox)
                     const strokeWidth = isAxis ? 0.02 : 0.01;
                     return (
                         <line
@@ -406,11 +615,9 @@ export function PixelCanvas({
                     );
                 })}
                 
-                {/* Grid lines - horizontal */}
                 {numHorizontalLines > 0 && Array.from({ length: numHorizontalLines }, (_, i) => {
                     const y = clampedStartY + i;
                     const isAxis = y === 0;
-                    // Stroke width in canvas coordinates (will scale with viewBox)
                     const strokeWidth = isAxis ? 0.02 : 0.01;
                     return (
                         <line
@@ -427,5 +634,4 @@ export function PixelCanvas({
             </svg>
         </div>
     );
-}
-
+});
