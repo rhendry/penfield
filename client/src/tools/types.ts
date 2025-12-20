@@ -22,6 +22,12 @@ export interface ToolContext {
     getPixel: (x: number, y: number) => string | null;
     
     /**
+     * Get full pixel data as ImageData (for bulk reads like flood fill)
+     * Returns the full canvas ImageData - use for algorithms that need to read many pixels
+     */
+    getPixelData: () => ImageData | null;
+    
+    /**
      * Apply pixel changes (delta only - not full state)
      * Pass color string to set, null to clear
      */

@@ -55,6 +55,10 @@ export function PixelEditor({
                 return canvasRef.current?.getPixel(x, y) ?? null;
             },
 
+            getPixelData: () => {
+                return canvasRef.current?.getPixelData() ?? null;
+            },
+
             applyPixels: (delta) => {
                 canvasRef.current?.applyPixels(delta);
             },

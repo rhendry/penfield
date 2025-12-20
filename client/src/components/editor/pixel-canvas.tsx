@@ -31,6 +31,8 @@ export interface PixelCanvasProps {
 export interface PixelCanvasHandle {
     /** Get pixel color at coordinates (null if empty) */
     getPixel: (x: number, y: number) => string | null;
+    /** Get full pixel data as ImageData (for bulk reads like flood fill) */
+    getPixelData: () => ImageData | null;
     /** Apply pixel changes - pass color to set, null to clear */
     applyPixels: (delta: PixelDelta) => void;
     /** Trigger a render (call after applyPixels if batching) */
@@ -47,7 +49,6 @@ export interface PixelCanvasHandle {
  * Parse a CSS color string to RGBA values (0-255)
  */
 function parseColor(color: string): [number, number, number, number] {
-    // Handle rgba/rgb
     const rgbaMatch = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
     if (rgbaMatch) {
         return [
@@ -57,17 +58,12 @@ function parseColor(color: string): [number, number, number, number] {
             rgbaMatch[4] ? Math.round(parseFloat(rgbaMatch[4]) * 255) : 255
         ];
     }
-    
-    // Handle hex colors
+
     let hex = color;
-    if (hex.startsWith('#')) {
-        hex = hex.slice(1);
-    }
-    
+    if (hex.startsWith('#')) hex = hex.slice(1);
     if (hex.length === 3) {
         hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
     }
-    
     if (hex.length === 6) {
         return [
             parseInt(hex.slice(0, 2), 16),
@@ -76,7 +72,6 @@ function parseColor(color: string): [number, number, number, number] {
             255
         ];
     }
-    
     if (hex.length === 8) {
         return [
             parseInt(hex.slice(0, 2), 16),
@@ -85,8 +80,6 @@ function parseColor(color: string): [number, number, number, number] {
             parseInt(hex.slice(6, 8), 16)
         ];
     }
-    
-    // Fallback to black
     return [0, 0, 0, 255];
 }
 
@@ -101,9 +94,43 @@ function rgbaToString(r: number, g: number, b: number, a: number): string {
 }
 
 /**
- * PixelCanvas - Infinite zoomable, pannable grid for creating pixel art.
- * Uses ImageData as source of truth for efficient pixel operations.
- * Supports mousewheel zoom and middle-click drag panning.
+ * WebGL shader for rendering pixel texture
+ */
+const vertexShaderSource = `
+attribute vec2 a_position;
+attribute vec2 a_texCoord;
+varying vec2 v_texCoord;
+uniform vec2 u_resolution;
+uniform vec2 u_viewOffset;
+uniform float u_zoom;
+
+void main() {
+    // Transform canvas coordinates to screen coordinates
+    // screenX = canvasX * zoom + panX
+    vec2 screenPos = a_position * u_zoom + u_viewOffset;
+    
+    // Transform screen coordinates to clip space (-1 to 1)
+    vec2 clipPos = (screenPos / u_resolution) * 2.0 - 1.0;
+    
+    // Flip Y axis (WebGL Y is up, screen Y is down)
+    gl_Position = vec4(clipPos.x, -clipPos.y, 0, 1);
+    v_texCoord = a_texCoord;
+}
+`;
+
+const fragmentShaderSource = `
+precision mediump float;
+uniform sampler2D u_texture;
+varying vec2 v_texCoord;
+
+void main() {
+    gl_FragColor = texture2D(u_texture, v_texCoord);
+}
+`;
+
+/**
+ * PixelCanvas - WebGL-based infinite zoomable, pannable grid for pixel art.
+ * Uses WebGL texture for GPU-accelerated rendering.
  */
 export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(function PixelCanvas({
     maxSize = 1000,
@@ -118,242 +145,421 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(funct
     className,
 }, ref) {
     const containerRef = useRef<HTMLDivElement>(null);
-    const svgRef = useRef<SVGSVGElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    
-    // ImageData is the source of truth for pixel data
+    const svgRef = useRef<SVGSVGElement>(null);
+
+    // WebGL context and resources
+    const glRef = useRef<WebGLRenderingContext | null>(null);
+    const textureRef = useRef<WebGLTexture | null>(null);
+    const programRef = useRef<WebGLProgram | null>(null);
+    const positionBufferRef = useRef<WebGLBuffer | null>(null);
+    const texCoordBufferRef = useRef<WebGLBuffer | null>(null);
+
+    // Pixel data (CPU-side for reading/writing)
     const imageDataRef = useRef<ImageData | null>(null);
-    const needsRenderRef = useRef(false);
+    const textureDirtyRef = useRef(false);
     const renderScheduledRef = useRef(false);
-    
-    // Get container dimensions
-    const [containerSize, setContainerSize] = useState({ width: 800, height: 600 });
-    
-    // View state: zoom and pan
+    // Track dirty region for efficient partial texture updates
+    const dirtyRegionRef = useRef<{ minX: number; minY: number; maxX: number; maxY: number } | null>(null);
+
+    // View state
     const [zoom, setZoom] = useState(1);
     const [panX, setPanX] = useState(0);
     const [panY, setPanY] = useState(0);
-    
-    // Pan state
+    const [containerSize, setContainerSize] = useState({ width: 800, height: 600 });
+    const [renderTrigger, setRenderTrigger] = useState(0);
+
+    // UI state
     const [isPanning, setIsPanning] = useState(false);
     const [panStart, setPanStart] = useState({ x: 0, y: 0 });
-    
-    // Drawing state
     const [isDrawing, setIsDrawing] = useState(false);
     const [drawButton, setDrawButton] = useState<"left" | "right" | null>(null);
-    
-    // Track if we've initialized
-    const [isInitialized, setIsInitialized] = useState(false);
-    
-    // Force re-render trigger
-    const [renderTrigger, setRenderTrigger] = useState(0);
-    
+
     const halfSize = maxSize / 2;
-    
-    // Initialize ImageData
+
+    // Initialize WebGL
     useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        const gl = canvas.getContext("webgl", { preserveDrawingBuffer: true });
+        if (!gl) {
+            console.error("WebGL not supported");
+            return;
+        }
+
+        glRef.current = gl;
+
+        // Create shaders
+        const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+        const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+        if (!vertexShader || !fragmentShader) return;
+
+        // Create program
+        const program = createProgram(gl, vertexShader, fragmentShader);
+        if (!program) return;
+        programRef.current = program;
+
+        // Create buffers
+        positionBufferRef.current = gl.createBuffer();
+        texCoordBufferRef.current = gl.createBuffer();
+
+        // Create texture
+        const texture = gl.createTexture();
+        if (!texture) return;
+        textureRef.current = texture;
+
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+        // Enable blending for transparency
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+        // Initialize ImageData
         imageDataRef.current = new ImageData(maxSize, maxSize);
+
+        // Initialize texture with ImageData (ensures texture is properly set up)
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, maxSize, maxSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, imageDataRef.current.data);
+
         return () => {
-            imageDataRef.current = null;
+            if (texture) gl.deleteTexture(texture);
+            if (positionBufferRef.current) gl.deleteBuffer(positionBufferRef.current);
+            if (texCoordBufferRef.current) gl.deleteBuffer(texCoordBufferRef.current);
+            glRef.current = null;
+            textureRef.current = null;
+            programRef.current = null;
         };
     }, [maxSize]);
-    
-    // Clamp pan to boundaries
-    const clampPan = useCallback((x: number, y: number, currentZoom: number, containerWidth: number, containerHeight: number) => {
-        const minPanX = containerWidth - halfSize * currentZoom;
-        const maxPanX = halfSize * currentZoom;
-        const minPanY = containerHeight - halfSize * currentZoom;
-        const maxPanY = halfSize * currentZoom;
-        
-        return {
-            x: Math.max(minPanX, Math.min(maxPanX, x)),
-            y: Math.max(minPanY, Math.min(maxPanY, y)),
-        };
-    }, [halfSize]);
-    
-    // Update container size and calculate initial zoom
+
+    function createShader(gl: WebGLRenderingContext, type: number, source: string): WebGLShader | null {
+        const shader = gl.createShader(type);
+        if (!shader) return null;
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            console.error("Shader compile error:", gl.getShaderInfoLog(shader));
+            gl.deleteShader(shader);
+            return null;
+        }
+        return shader;
+    }
+
+    function createProgram(gl: WebGLRenderingContext, vertexShader: WebGLShader, fragmentShader: WebGLShader): WebGLProgram | null {
+        const program = gl.createProgram();
+        if (!program) return null;
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            console.error("Program link error:", gl.getProgramInfoLog(program));
+            gl.deleteProgram(program);
+            return null;
+        }
+        return program;
+    }
+
+    // Update container size
     useEffect(() => {
         const updateSize = () => {
             if (!containerRef.current) return;
-            const width = containerRef.current.clientWidth || 800;
-            const height = containerRef.current.clientHeight || 600;
+            const { width, height } = containerRef.current.getBoundingClientRect();
             setContainerSize({ width, height });
-            
-            if (!isInitialized && height > 0 && width > 0) {
-                const initialZoom = height / defaultZoomPixels;
-                const maxZoomOut = Math.min(width / maxSize, height / maxSize);
-                const clampedZoom = Math.max(maxZoomOut, initialZoom);
-                setZoom(clampedZoom);
-                
-                const initialPanX = width / 2;
-                const initialPanY = height / 2;
-                const minPanX = width - halfSize * clampedZoom;
-                const maxPanX = halfSize * clampedZoom;
-                const minPanY = height - halfSize * clampedZoom;
-                const maxPanY = halfSize * clampedZoom;
-                setPanX(Math.max(minPanX, Math.min(maxPanX, initialPanX)));
-                setPanY(Math.max(minPanY, Math.min(maxPanY, initialPanY)));
-                setIsInitialized(true);
-            }
         };
-        
+
         updateSize();
-        
         const resizeObserver = new ResizeObserver(updateSize);
         if (containerRef.current) {
             resizeObserver.observe(containerRef.current);
         }
-        
-        window.addEventListener("resize", updateSize);
-        return () => {
-            resizeObserver.disconnect();
-            window.removeEventListener("resize", updateSize);
-        };
-    }, [defaultZoomPixels, isInitialized, maxSize, halfSize]);
-    
-    // Calculate max zoom to prevent seeing beyond boundaries
-    const calculateMaxZoom = useCallback(() => {
-        if (!containerRef.current) return 100;
-        const containerWidth = containerRef.current.clientWidth || 800;
-        const containerHeight = containerRef.current.clientHeight || 600;
-        return Math.min(containerWidth / maxSize, containerHeight / maxSize);
-    }, [maxSize]);
-    
-    // Get pixel color from ImageData
+        return () => resizeObserver.disconnect();
+    }, []);
+
+    // Initialize zoom and center camera on (0,0)
+    useEffect(() => {
+        if (!containerRef.current || containerSize.width === 0) return;
+        const initialZoom = containerSize.height / defaultZoomPixels;
+        setZoom(initialZoom);
+        // Center camera on (0,0) - pan should position (0,0) at center of screen
+        setPanX(containerSize.width / 2);
+        setPanY(containerSize.height / 2);
+    }, [containerSize, defaultZoomPixels]);
+
+    // Render function (WebGL)
+    const render = useCallback(() => {
+        const gl = glRef.current;
+        const texture = textureRef.current;
+        const program = programRef.current;
+        const canvas = canvasRef.current;
+        if (!gl || !texture || !program || !canvas) return;
+        const dpr = window.devicePixelRatio || 1;
+        const displayWidth = containerSize.width;
+        const displayHeight = containerSize.height;
+
+        // Resize canvas if needed
+        const targetWidth = displayWidth * dpr;
+        const targetHeight = displayHeight * dpr;
+        if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+            canvas.width = targetWidth;
+            canvas.height = targetHeight;
+            gl.viewport(0, 0, targetWidth, targetHeight);
+        }
+
+        // Update texture if dirty
+        if (textureDirtyRef.current && imageDataRef.current) {
+            gl.bindTexture(gl.TEXTURE_2D, texture);
+            const imgData = imageDataRef.current;
+            const dirtyRegion = dirtyRegionRef.current;
+
+            if (dirtyRegion) {
+                // Partial update using texSubImage2D - only upload changed region
+                const width = dirtyRegion.maxX - dirtyRegion.minX + 1;
+                const height = dirtyRegion.maxY - dirtyRegion.minY + 1;
+
+                // Extract subregion from ImageData
+                const subData = new Uint8Array(width * height * 4);
+                for (let y = 0; y < height; y++) {
+                    const srcY = dirtyRegion.minY + y;
+                    const srcStart = (srcY * maxSize + dirtyRegion.minX) * 4;
+                    const dstStart = y * width * 4;
+                    subData.set(imgData.data.subarray(srcStart, srcStart + width * 4), dstStart);
+                }
+
+                // Upload only the dirty region
+                gl.texSubImage2D(
+                    gl.TEXTURE_2D,
+                    0,
+                    dirtyRegion.minX,
+                    dirtyRegion.minY,
+                    width,
+                    height,
+                    gl.RGBA,
+                    gl.UNSIGNED_BYTE,
+                    subData
+                );
+
+                // Clear dirty region after update
+                dirtyRegionRef.current = null;
+            } else {
+                // Full texture update (fallback - should rarely happen)
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, maxSize, maxSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, imgData.data);
+            }
+
+            textureDirtyRef.current = false;
+        }
+
+        // Clear
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        // Use program
+        gl.useProgram(program);
+
+        // Set up quad covering entire canvas
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBufferRef.current);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+            -halfSize, -halfSize,
+            halfSize, -halfSize,
+            -halfSize, halfSize,
+            halfSize, halfSize,
+        ]), gl.STATIC_DRAW);
+
+        const positionLocation = gl.getAttribLocation(program, "a_position");
+        gl.enableVertexAttribArray(positionLocation);
+        gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+        // Texture coordinates
+        gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBufferRef.current);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+            0, 0,
+            1, 0,
+            0, 1,
+            1, 1,
+        ]), gl.STATIC_DRAW);
+
+        const texCoordLocation = gl.getAttribLocation(program, "a_texCoord");
+        gl.enableVertexAttribArray(texCoordLocation);
+        gl.vertexAttribPointer(texCoordLocation, 2, gl.FLOAT, false, 0, 0);
+
+        // Bind texture before setting uniforms (ensures it's active)
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+
+        // Set uniforms
+        const resolutionLocation = gl.getUniformLocation(program, "u_resolution");
+        const viewOffsetLocation = gl.getUniformLocation(program, "u_viewOffset");
+        const zoomLocation = gl.getUniformLocation(program, "u_zoom");
+        const textureLocation = gl.getUniformLocation(program, "u_texture");
+
+        gl.uniform2f(resolutionLocation, displayWidth, displayHeight);
+        gl.uniform2f(viewOffsetLocation, panX, panY);
+        gl.uniform1f(zoomLocation, zoom);
+        gl.uniform1i(textureLocation, 0);
+
+        // Draw
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    }, [containerSize, halfSize, maxSize, zoom, panX, panY]);
+
+    // Render on view changes or pixel updates
+    useEffect(() => {
+        render();
+    }, [render, zoom, panX, panY, containerSize, renderTrigger]);
+
+    // Get pixel
     const getPixel = useCallback((x: number, y: number): string | null => {
         const imageData = imageDataRef.current;
         if (!imageData) return null;
-        
-        // Convert from centered coords to ImageData coords
+
         const imgX = x + halfSize;
         const imgY = y + halfSize;
-        
-        if (imgX < 0 || imgX >= maxSize || imgY < 0 || imgY >= maxSize) {
-            return null;
-        }
-        
+        if (imgX < 0 || imgX >= maxSize || imgY < 0 || imgY >= maxSize) return null;
+
         const idx = (imgY * maxSize + imgX) * 4;
         const r = imageData.data[idx];
         const g = imageData.data[idx + 1];
         const b = imageData.data[idx + 2];
         const a = imageData.data[idx + 3];
-        
+
         if (a === 0) return null;
-        
         return rgbaToString(r, g, b, a);
     }, [halfSize, maxSize]);
-    
-    // Apply pixel delta to ImageData
+
+    // Get pixel data
+    const getPixelData = useCallback((): ImageData | null => {
+        return imageDataRef.current;
+    }, []);
+
+    // Apply pixels
     const applyPixels = useCallback((delta: PixelDelta) => {
         const imageData = imageDataRef.current;
         if (!imageData) return;
-        
+
+        // Cache parsed colors to avoid repeated parsing
+        const colorCache = new Map<string | null, [number, number, number, number] | null>();
+        colorCache.set(null, null); // null means transparent
+
+        // Track dirty region bounds
+        let minX = maxSize;
+        let minY = maxSize;
+        let maxX = -1;
+        let maxY = -1;
+
         for (const key in delta) {
             const commaIdx = key.indexOf(",");
             const x = parseInt(key.slice(0, commaIdx), 10);
             const y = parseInt(key.slice(commaIdx + 1), 10);
-            
+
             const imgX = x + halfSize;
             const imgY = y + halfSize;
-            
-            if (imgX < 0 || imgX >= maxSize || imgY < 0 || imgY >= maxSize) {
-                continue;
-            }
-            
+            if (imgX < 0 || imgX >= maxSize || imgY < 0 || imgY >= maxSize) continue;
+
+            // Update dirty region bounds
+            minX = Math.min(minX, imgX);
+            minY = Math.min(minY, imgY);
+            maxX = Math.max(maxX, imgX);
+            maxY = Math.max(maxY, imgY);
+
             const idx = (imgY * maxSize + imgX) * 4;
             const color = delta[key];
-            
-            if (color === null) {
-                // Clear pixel
+
+            // Get or parse color
+            let rgba: [number, number, number, number] | null;
+            if (!colorCache.has(color)) {
+                rgba = color === null ? null : parseColor(color);
+                colorCache.set(color, rgba);
+            } else {
+                rgba = colorCache.get(color)!;
+            }
+
+            if (rgba === null) {
                 imageData.data[idx] = 0;
                 imageData.data[idx + 1] = 0;
                 imageData.data[idx + 2] = 0;
                 imageData.data[idx + 3] = 0;
             } else {
-                const [r, g, b, a] = parseColor(color);
-                imageData.data[idx] = r;
-                imageData.data[idx + 1] = g;
-                imageData.data[idx + 2] = b;
-                imageData.data[idx + 3] = a;
+                imageData.data[idx] = rgba[0];
+                imageData.data[idx + 1] = rgba[1];
+                imageData.data[idx + 2] = rgba[2];
+                imageData.data[idx + 3] = rgba[3];
             }
         }
-        
-        needsRenderRef.current = true;
-        
-        // Auto-schedule render if not already scheduled
+
+        // Update dirty region (merge with existing if any)
+        if (minX <= maxX && minY <= maxY) {
+            if (dirtyRegionRef.current) {
+                dirtyRegionRef.current = {
+                    minX: Math.min(dirtyRegionRef.current.minX, minX),
+                    minY: Math.min(dirtyRegionRef.current.minY, minY),
+                    maxX: Math.max(dirtyRegionRef.current.maxX, maxX),
+                    maxY: Math.max(dirtyRegionRef.current.maxY, maxY),
+                };
+            } else {
+                dirtyRegionRef.current = { minX, minY, maxX, maxY };
+            }
+            textureDirtyRef.current = true;
+        }
+
+        // Batch render triggers - only schedule once per frame
         if (!renderScheduledRef.current) {
             renderScheduledRef.current = true;
             requestAnimationFrame(() => {
                 renderScheduledRef.current = false;
-                if (needsRenderRef.current) {
-                    needsRenderRef.current = false;
-                    setRenderTrigger(t => t + 1);
-                }
+                setRenderTrigger(t => t + 1);
             });
         }
     }, [halfSize, maxSize]);
-    
-    // Force render
-    const render = useCallback(() => {
-        setRenderTrigger(t => t + 1);
-    }, []);
-    
-    // Get all pixels as Record (for serialization)
+
+    // Get all pixels
     const getAllPixels = useCallback((): Record<string, string> => {
         const imageData = imageDataRef.current;
         if (!imageData) return {};
-        
+
         const result: Record<string, string> = {};
-        
         for (let y = 0; y < maxSize; y++) {
             for (let x = 0; x < maxSize; x++) {
                 const idx = (y * maxSize + x) * 4;
                 const a = imageData.data[idx + 3];
-                
                 if (a > 0) {
                     const r = imageData.data[idx];
                     const g = imageData.data[idx + 1];
                     const b = imageData.data[idx + 2];
-                    const canvasX = x - halfSize;
-                    const canvasY = y - halfSize;
-                    result[`${canvasX},${canvasY}`] = rgbaToString(r, g, b, a);
+                    const coordX = x - halfSize;
+                    const coordY = y - halfSize;
+                    result[`${coordX},${coordY}`] = rgbaToString(r, g, b, a);
                 }
             }
         }
-        
         return result;
     }, [maxSize, halfSize]);
-    
-    // Clear all pixels
+
+    // Clear
     const clear = useCallback(() => {
         const imageData = imageDataRef.current;
         if (!imageData) return;
-        
         imageData.data.fill(0);
+        textureDirtyRef.current = true;
+        dirtyRegionRef.current = null; // Full texture update
         setRenderTrigger(t => t + 1);
     }, []);
-    
-    // Load pixels from Record
+
+    // Load pixels
     const loadPixels = useCallback((pixels: Record<string, string>) => {
         const imageData = imageDataRef.current;
         if (!imageData) return;
-        
-        // Clear first
+
         imageData.data.fill(0);
-        
-        // Load pixels
         for (const key in pixels) {
             const commaIdx = key.indexOf(",");
             const x = parseInt(key.slice(0, commaIdx), 10);
             const y = parseInt(key.slice(commaIdx + 1), 10);
-            
+
             const imgX = x + halfSize;
             const imgY = y + halfSize;
-            
-            if (imgX < 0 || imgX >= maxSize || imgY < 0 || imgY >= maxSize) {
-                continue;
-            }
-            
+            if (imgX < 0 || imgX >= maxSize || imgY < 0 || imgY >= maxSize) continue;
+
             const idx = (imgY * maxSize + imgX) * 4;
             const [r, g, b, a] = parseColor(pixels[key]);
             imageData.data[idx] = r;
@@ -361,219 +567,124 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(funct
             imageData.data[idx + 2] = b;
             imageData.data[idx + 3] = a;
         }
-        
+
+        textureDirtyRef.current = true;
+        dirtyRegionRef.current = null; // Full texture update
         setRenderTrigger(t => t + 1);
     }, [halfSize, maxSize]);
-    
+
+    // Render function for imperative handle
+    const triggerRender = useCallback(() => {
+        setRenderTrigger(t => t + 1);
+    }, []);
+
     // Expose imperative handle
     useImperativeHandle(ref, () => ({
         getPixel,
+        getPixelData,
         applyPixels,
-        render,
+        render: triggerRender,
         getAllPixels,
         clear,
         loadPixels,
-    }), [getPixel, applyPixels, render, getAllPixels, clear, loadPixels]);
-    
-    // Handle mousewheel zoom
+    }), [getPixel, getPixelData, applyPixels, triggerRender, getAllPixels, clear, loadPixels]);
+
+    // Mouse handlers (zoom, pan, draw)
     const handleWheel = useCallback((e: WheelEvent) => {
         e.preventDefault();
-        
-        if (!containerRef.current || !svgRef.current) return;
-        
+        if (!containerRef.current) return;
+
         const rect = containerRef.current.getBoundingClientRect();
         const mouseX = e.clientX - rect.left;
         const mouseY = e.clientY - rect.top;
-        
-        const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
-        const maxZoomOut = calculateMaxZoom();
-        const newZoom = Math.max(maxZoomOut, Math.min(100, zoom * zoomFactor));
-        
-        const canvasX = (mouseX - panX) / zoom;
-        const canvasY = (mouseY - panY) / zoom;
-        
-        let newPanX = mouseX - canvasX * newZoom;
-        let newPanY = mouseY - canvasY * newZoom;
-        
-        const clamped = clampPan(newPanX, newPanY, newZoom, rect.width, rect.height);
-        
-        const panChangedX = Math.abs(clamped.x - newPanX) > 1;
-        const panChangedY = Math.abs(clamped.y - newPanY) > 1;
-        
-        if (panChangedX || panChangedY) {
-            const centerX = rect.width / 2;
-            const centerY = rect.height / 2;
-            const centerCanvasX = (-panX + centerX) / zoom;
-            const centerCanvasY = (-panY + centerY) / zoom;
-            
-            const centeredPanX = centerX - centerCanvasX * newZoom;
-            const centeredPanY = centerY - centerCanvasY * newZoom;
-            
-            const centeredClamped = clampPan(centeredPanX, centeredPanY, newZoom, rect.width, rect.height);
-            
-            setZoom(newZoom);
-            setPanX(centeredClamped.x);
-            setPanY(centeredClamped.y);
-        } else {
-            setZoom(newZoom);
-            setPanX(clamped.x);
-            setPanY(clamped.y);
-        }
-    }, [zoom, panX, panY, clampPan, calculateMaxZoom]);
-    
-    // Convert screen coordinates to canvas coordinates
-    const screenToCanvas = useCallback((screenX: number, screenY: number): { x: number; y: number } | null => {
-        if (!containerRef.current) return null;
-        const rect = containerRef.current.getBoundingClientRect();
-        const mouseX = screenX - rect.left;
-        const mouseY = screenY - rect.top;
-        const canvasX = Math.floor((-panX + mouseX) / zoom);
-        const canvasY = Math.floor((-panY + mouseY) / zoom);
-        return { x: canvasX, y: canvasY };
-    }, [panX, panY, zoom]);
 
-    // Handle mouse down
-    const handleMouseDown = useCallback((e: React.MouseEvent) => {
-        if (e.button === 1) {
-            e.preventDefault();
-            e.stopPropagation();
-            setIsPanning(true);
-            setPanStart({
-                x: e.clientX - panX,
-                y: e.clientY - panY,
-            });
-        } else if (e.button === 0 || e.button === 2) {
-            e.preventDefault();
-            e.stopPropagation();
-            const button = e.button === 0 ? "left" : "right";
-            setIsDrawing(true);
-            setDrawButton(button);
-            
-            const coords = screenToCanvas(e.clientX, e.clientY);
-            if (coords && onPixelClick) {
-                onPixelClick(coords.x, coords.y, button);
-            }
-        }
-    }, [panX, panY, screenToCanvas, onPixelClick]);
-    
-    // Prevent middle mouse button scroll
-    useEffect(() => {
-        const handleAuxClick = (e: MouseEvent) => {
-            if (e.button === 1) {
-                e.preventDefault();
-            }
-        };
-        
-        const container = containerRef.current;
-        if (!container) return;
-        
-        container.addEventListener("auxclick", handleAuxClick);
-        return () => container.removeEventListener("auxclick", handleAuxClick);
+        const delta = e.deltaY > 0 ? 0.9 : 1.1;
+        setZoom(currentZoom => {
+            const newZoom = Math.max(0.1, Math.min(100, currentZoom * delta));
+            const zoomFactor = newZoom / currentZoom;
+            setPanX(currentPanX => mouseX - (mouseX - currentPanX) * zoomFactor);
+            setPanY(currentPanY => mouseY - (mouseY - currentPanY) * zoomFactor);
+            return newZoom;
+        });
     }, []);
-    
-    const handleMouseMove = useCallback((e: MouseEvent) => {
-        if (isPanning && containerRef.current) {
-            const newPanX = e.clientX - panStart.x;
-            const newPanY = e.clientY - panStart.y;
-            
+
+    const handleMouseDown = useCallback((e: React.MouseEvent) => {
+        if (!containerRef.current) return;
+
+        if (e.button === 1) { // Middle mouse
+            e.preventDefault();
+            setIsPanning(true);
+            setPanStart({ x: e.clientX - panX, y: e.clientY - panY });
+        } else if (e.button === 0 || e.button === 2) {
             const rect = containerRef.current.getBoundingClientRect();
-            const clamped = clampPan(newPanX, newPanY, zoom, rect.width, rect.height);
-            
-            setPanX(clamped.x);
-            setPanY(clamped.y);
-        } else if (isDrawing && drawButton && onPixelDrag) {
-            const coords = screenToCanvas(e.clientX, e.clientY);
-            if (coords) {
-                onPixelDrag(coords.x, coords.y, drawButton);
-            }
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            const canvasX = (mouseX - panX) / zoom;
+            const canvasY = (mouseY - panY) / zoom;
+            const pixelX = Math.floor(canvasX);
+            const pixelY = Math.floor(canvasY);
+
+            setIsDrawing(true);
+            setDrawButton(e.button === 0 ? "left" : "right");
+            onPixelClick?.(pixelX, pixelY, e.button === 0 ? "left" : "right");
         }
-    }, [isPanning, panStart, zoom, clampPan, isDrawing, drawButton, onPixelDrag, screenToCanvas]);
-    
+    }, [onPixelClick, panX, panY, zoom]);
+
+    const handleMouseMove = useCallback((e: React.MouseEvent) => {
+        if (!containerRef.current) return;
+
+        if (isPanning) {
+            setPanX(e.clientX - panStart.x);
+            setPanY(e.clientY - panStart.y);
+        } else if (isDrawing && drawButton !== null) {
+            const rect = containerRef.current.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            const canvasX = (mouseX - panX) / zoom;
+            const canvasY = (mouseY - panY) / zoom;
+            const pixelX = Math.floor(canvasX);
+            const pixelY = Math.floor(canvasY);
+
+            onPixelDrag?.(pixelX, pixelY, drawButton);
+        }
+    }, [isPanning, isDrawing, drawButton, panStart, panX, panY, zoom, onPixelDrag]);
+
     const handleMouseUp = useCallback(() => {
         setIsPanning(false);
         setIsDrawing(false);
         setDrawButton(null);
-        if (onMouseUp) {
-            onMouseUp();
-        }
+        onMouseUp?.();
     }, [onMouseUp]);
-    
-    // Set up event listeners
+
+    // Event listeners
     useEffect(() => {
         const container = containerRef.current;
         if (!container) return;
-        
-        container.addEventListener("wheel", handleWheel, { passive: false });
-        window.addEventListener("mousemove", handleMouseMove);
-        window.addEventListener("mouseup", handleMouseUp);
-        
-        return () => {
-            container.removeEventListener("wheel", handleWheel);
-            window.removeEventListener("mousemove", handleMouseMove);
-            window.removeEventListener("mouseup", handleMouseUp);
-        };
-    }, [handleWheel, handleMouseMove, handleMouseUp]);
-    
-    // Calculate visible range
-    const startX = Math.floor((-panX / zoom) - 1);
-    const endX = Math.ceil((-panX + containerSize.width) / zoom + 1);
-    const startY = Math.floor((-panY / zoom) - 1);
-    const endY = Math.ceil((-panY + containerSize.height) / zoom + 1);
-    
-    const clampedStartX = Math.max(-halfSize, startX);
-    const clampedEndX = Math.min(halfSize, endX);
-    const clampedStartY = Math.max(-halfSize, startY);
-    const clampedEndY = Math.min(halfSize, endY);
-    
-    const numVerticalLines = Math.max(0, clampedEndX - clampedStartX + 1);
-    const numHorizontalLines = Math.max(0, clampedEndY - clampedStartY + 1);
-    
+
+        container.addEventListener("wheel", handleWheel);
+        return () => container.removeEventListener("wheel", handleWheel);
+    }, [handleWheel]);
+
+    // Grid rendering (SVG overlay)
     const viewBoxX = -panX / zoom;
     const viewBoxY = -panY / zoom;
     const viewBoxWidth = containerSize.width / zoom;
     const viewBoxHeight = containerSize.height / zoom;
-    
-    // Render ImageData to display canvas
-    useEffect(() => {
-        const canvas = canvasRef.current;
-        const imageData = imageDataRef.current;
-        if (!canvas || !imageData) return;
-        
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-        
-        const dpr = window.devicePixelRatio || 1;
-        const displayWidth = containerSize.width;
-        const displayHeight = containerSize.height;
-        
-        canvas.width = displayWidth * dpr;
-        canvas.height = displayHeight * dpr;
-        ctx.scale(dpr, dpr);
-        ctx.imageSmoothingEnabled = false;
-        
-        ctx.clearRect(0, 0, displayWidth, displayHeight);
-        
-        // Create temporary canvas for ImageData
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = maxSize;
-        tempCanvas.height = maxSize;
-        const tempCtx = tempCanvas.getContext('2d');
-        if (!tempCtx) return;
-        
-        tempCtx.putImageData(imageData, 0, 0);
-        
-        // Calculate source rect
-        const srcX = viewBoxX + halfSize;
-        const srcY = viewBoxY + halfSize;
-        const srcWidth = viewBoxWidth;
-        const srcHeight = viewBoxHeight;
-        
-        ctx.drawImage(
-            tempCanvas,
-            srcX, srcY, srcWidth, srcHeight,
-            0, 0, displayWidth, displayHeight
-        );
-    }, [renderTrigger, zoom, panX, panY, containerSize, viewBoxX, viewBoxY, viewBoxWidth, viewBoxHeight, maxSize, halfSize]);
+
+    const startX = Math.floor(viewBoxX - 1);
+    const endX = Math.ceil(viewBoxX + viewBoxWidth + 1);
+    const startY = Math.floor(viewBoxY - 1);
+    const endY = Math.ceil(viewBoxY + viewBoxHeight + 1);
+
+    const clampedStartX = Math.max(-halfSize, startX);
+    const clampedEndX = Math.min(halfSize, endX);
+    const clampedStartY = Math.max(-halfSize, startY);
+    const clampedEndY = Math.min(halfSize, endY);
+
+    const numVerticalLines = Math.max(0, clampedEndX - clampedStartX + 1);
+    const numHorizontalLines = Math.max(0, clampedEndY - clampedStartY + 1);
 
     return (
         <div
@@ -581,6 +692,8 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(funct
             className={cn("w-full h-full overflow-hidden relative", className)}
             style={{ backgroundColor, width: "100%", height: "100%" }}
             onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
             onContextMenu={(e) => e.preventDefault()}
         >
             <canvas
@@ -588,11 +701,11 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(funct
                 className="absolute inset-0 w-full h-full"
                 style={{ pointerEvents: "none" }}
             />
-            
+
             <svg
                 ref={svgRef}
                 className="absolute inset-0 w-full h-full"
-                viewBox={zoom > 0 && containerSize.width > 0 && containerSize.height > 0 
+                viewBox={zoom > 0 && containerSize.width > 0 && containerSize.height > 0
                     ? `${viewBoxX} ${viewBoxY} ${viewBoxWidth} ${viewBoxHeight}`
                     : `-25 -25 50 50`}
                 preserveAspectRatio="none"
@@ -614,7 +727,6 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(funct
                         />
                     );
                 })}
-                
                 {numHorizontalLines > 0 && Array.from({ length: numHorizontalLines }, (_, i) => {
                     const y = clampedStartY + i;
                     const isAxis = y === 0;
