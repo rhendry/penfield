@@ -35,12 +35,14 @@ function processBuffer(context: ToolContext) {
         // Generate smooth Bezier curve
         const curve = smoothCurveAdaptive(points, 0.5, 2);
         
-        // Erase all curve points
-        const newPixels = { ...context.pixels };
-        curve.forEach(p => {
-            delete newPixels[`${p.x},${p.y}`];
+        // Erase all curve points - use updater for latest state in RAF callback
+        context.setPixels((prev) => {
+            const newPixels = { ...prev };
+            curve.forEach(p => {
+                delete newPixels[`${p.x},${p.y}`];
+            });
+            return newPixels;
         });
-        context.setPixels(newPixels);
         
         // Update last erased point for continuity
         if (curve.length > 0) {
@@ -49,9 +51,11 @@ function processBuffer(context: ToolContext) {
     } else if (points.length === 1) {
         // Single point - erase directly
         const p = points[0];
-        const newPixels = { ...context.pixels };
-        delete newPixels[`${p.x},${p.y}`];
-        context.setPixels(newPixels);
+        context.setPixels((prev) => {
+            const newPixels = { ...prev };
+            delete newPixels[`${p.x},${p.y}`];
+            return newPixels;
+        });
         lastErasedPoint = p;
     }
     

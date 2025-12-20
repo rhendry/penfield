@@ -1,18 +1,27 @@
 import { ReactNode } from "react";
 
 /**
+ * Pixel updater function - receives current pixels, returns new pixels
+ */
+export type PixelUpdater = (prev: Record<string, string>) => Record<string, string>;
+
+/**
  * Tool context passed to tool event handlers
  * Provides read access to state and write access via setPixels
  */
 export interface ToolContext {
-    // Read-only state
+    // Read-only state (may be stale in RAF callbacks - use getPixels() for latest)
     readonly pixels: Record<string, string>;
     readonly maxSize: number;
     readonly leftClickColor: string;
     readonly rightClickColor: string;
     
+    // Get the latest pixels (safe to call in RAF callbacks)
+    getPixels: () => Record<string, string>;
+    
     // Mutations - tools call these to update editor state
-    setPixels: (pixels: Record<string, string>) => void;
+    // Can pass either new pixels object or an updater function
+    setPixels: (pixels: Record<string, string> | PixelUpdater) => void;
     
     // Helper for batched rendering - tools can use this for RAF-based updates
     requestDraw: (callback: () => void) => number;

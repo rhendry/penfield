@@ -37,7 +37,7 @@ export const PIXEL_EDITOR_TOOLS = [PEN_TOOL, ERASER_TOOL, FILL_TOOL];
 
 /**
  * Default toolbelt for pixel editor
- * Contains Pen and Eraser tools
+ * Contains Pen, Eraser, and Fill tools
  */
 export const DEFAULT_PIXEL_TOOLBELT: ToolbeltSlot[] = [
     {
@@ -49,6 +49,11 @@ export const DEFAULT_PIXEL_TOOLBELT: ToolbeltSlot[] = [
         id: "slot-2",
         hotkey: "2",
         tool: ERASER_TOOL,
+    },
+    {
+        id: "slot-3",
+        hotkey: "3",
+        tool: FILL_TOOL,
     },
 ];
 

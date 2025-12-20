@@ -9,7 +9,7 @@
 export { penTool } from "./pen";
 export { eraserTool } from "./eraser";
 export { fillTool } from "./fill";
-export type { PixelTool, ToolContext } from "./types";
+export type { PixelTool, ToolContext, PixelUpdater } from "./types";
 
 // Tool registry - maps tool IDs to tool implementations
 import { penTool } from "./pen";

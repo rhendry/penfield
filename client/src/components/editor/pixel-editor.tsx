@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { PixelCanvas } from "./pixel-canvas";
 import { Tool } from "@/components/toolbelt/types";
-import { getTool, ToolContext } from "@/tools";
+import { getTool, ToolContext, PixelUpdater } from "@/tools";
 
 interface PixelEditorProps {
     initialContent: any;
@@ -21,9 +21,15 @@ export function PixelEditor({
     className,
 }: PixelEditorProps) {
     // Pixel data: key is "x,y", value is color string
-    const [pixels, setPixels] = useState<Record<string, string>>(
+    const [pixels, setPixelsState] = useState<Record<string, string>>(
         initialContent?.grid || {}
     );
+
+    // Keep a ref to always have the latest pixels (for RAF callbacks)
+    const pixelsRef = useRef(pixels);
+    useEffect(() => {
+        pixelsRef.current = pixels;
+    }, [pixels]);
 
     const maxSize = 1000;
 
@@ -43,6 +49,20 @@ export function PixelEditor({
         onPixelsChangeRef.current(pixels);
     }, [pixels]);
 
+    // Wrapper for setPixels that accepts updater function or direct value
+    const setPixels = useCallback((pixelsOrUpdater: Record<string, string> | PixelUpdater) => {
+        if (typeof pixelsOrUpdater === "function") {
+            setPixelsState((prev) => {
+                const newPixels = pixelsOrUpdater(prev);
+                pixelsRef.current = newPixels;
+                return newPixels;
+            });
+        } else {
+            pixelsRef.current = pixelsOrUpdater;
+            setPixelsState(pixelsOrUpdater);
+        }
+    }, []);
+
     // Create tool context - provides read access and mutations
     const createToolContext = useCallback((): ToolContext => {
         return {
@@ -50,11 +70,12 @@ export function PixelEditor({
             maxSize,
             leftClickColor,
             rightClickColor,
+            getPixels: () => pixelsRef.current,
             setPixels,
             requestDraw: (callback: () => void) => requestAnimationFrame(callback),
             cancelDraw: (id: number) => cancelAnimationFrame(id),
         };
-    }, [pixels, leftClickColor, rightClickColor]);
+    }, [pixels, leftClickColor, rightClickColor, setPixels]);
 
     // Handle tool activation/deactivation when selected tool changes
     useEffect(() => {
