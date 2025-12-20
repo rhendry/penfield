@@ -16,7 +16,6 @@ import { useToolkitExplorer } from "@/hooks/use-toolkit-explorer";
 import { Tool } from "@/components/toolbelt/types";
 import { ToolbeltSlot } from "@/components/toolbelt/types";
 import { PEN_TOOL, DEFAULT_PIXEL_TOOLBELT } from "@/components/editor/pixel-editor-tools";
-import { createPenUtilities } from "@/tools";
 import { ColorPicker } from "@/components/utilities/color-picker";
 import { ColorPalette } from "@/components/utilities/color-palette";
 import { Palette } from "@/components/utilities/palette-selector";
@@ -186,47 +185,59 @@ function PixelEditorContent() {
         const toolId = selectedTool.id;
 
         if (toolId === "pen") {
-            return createPenUtilities(
-                leftClickColor,
-                rightClickColor,
-                currentPaletteId,
-                palettes,
-                currentPaletteColors,
-                setLeftClickColor,
-                setRightClickColor,
-                setCurrentPaletteId,
-                (color) => setLeftClickColor(color),
-                async (color) => {
-                    if (!currentPaletteId) return;
-                    try {
-                        await apiRequest("POST", `/api/palettes/${currentPaletteId}/colors`, { color });
-                        queryClient.invalidateQueries({ queryKey: ["/api/palettes"] });
-                    } catch (error) {
-                        console.error("Failed to add color:", error);
-                    }
-                },
-                async (colorIndex) => {
-                    if (!currentPaletteId) return;
-                    try {
-                        await apiRequest("DELETE", `/api/palettes/${currentPaletteId}/colors/${colorIndex}`);
-                        queryClient.invalidateQueries({ queryKey: ["/api/palettes"] });
-                    } catch (error) {
-                        console.error("Failed to remove color:", error);
-                    }
-                },
-                async () => {
-                    try {
-                        const res = await apiRequest("POST", "/api/palettes", {
-                            name: `Palette ${palettes.length + 1}`,
-                            colors: [],
-                        });
-                        const newPalette = await res.json();
-                        setCurrentPaletteId(String(newPalette.id));
-                        queryClient.invalidateQueries({ queryKey: ["/api/palettes"] });
-                    } catch (error) {
-                        console.error("Failed to create palette:", error);
-                    }
-                }
+            return (
+                <>
+                    <ColorPicker
+                        value={leftClickColor}
+                        onChange={setLeftClickColor}
+                        label="Left Click"
+                    />
+                    <ColorPicker
+                        value={rightClickColor}
+                        onChange={setRightClickColor}
+                        label="Right Click"
+                    />
+                    <ColorPalette
+                        paletteId={currentPaletteId}
+                        palettes={palettes}
+                        colors={currentPaletteColors}
+                        selectedColor={leftClickColor}
+                        onSelectPalette={setCurrentPaletteId}
+                        onSelectColor={(color) => setLeftClickColor(color)}
+                        onAddColor={async (color) => {
+                            if (!currentPaletteId) return;
+                            try {
+                                await apiRequest("POST", `/api/palettes/${currentPaletteId}/colors`, { color });
+                                queryClient.invalidateQueries({ queryKey: ["/api/palettes"] });
+                            } catch (error) {
+                                console.error("Failed to add color:", error);
+                            }
+                        }}
+                        onRemoveColor={async (colorIndex) => {
+                            if (!currentPaletteId) return;
+                            try {
+                                await apiRequest("DELETE", `/api/palettes/${currentPaletteId}/colors/${colorIndex}`);
+                                queryClient.invalidateQueries({ queryKey: ["/api/palettes"] });
+                            } catch (error) {
+                                console.error("Failed to remove color:", error);
+                            }
+                        }}
+                        onCreatePalette={async () => {
+                            try {
+                                const res = await apiRequest("POST", "/api/palettes", {
+                                    name: `Palette ${palettes.length + 1}`,
+                                    colors: [],
+                                });
+                                const newPalette = await res.json();
+                                setCurrentPaletteId(String(newPalette.id));
+                                queryClient.invalidateQueries({ queryKey: ["/api/palettes"] });
+                            } catch (error) {
+                                console.error("Failed to create palette:", error);
+                            }
+                        }}
+                        currentPickerColor={leftClickColor}
+                    />
+                </>
             );
         } else if (toolId === "fill") {
             return (

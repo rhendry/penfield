@@ -2,22 +2,25 @@
  * Tools Library
  * 
  * Centralized location for all pixel editor tools.
- * Each tool implements the PixelTool interface and provides
- * drawing logic and optional utilities.
+ * Each tool implements the PixelTool interface and handles
+ * its own input processing, interpolation, and state management.
  */
 
-export { penTool, createPenUtilities } from "./pen";
+export { penTool } from "./pen";
 export { eraserTool } from "./eraser";
-export type { PixelTool, ToolContext, ToolResult } from "./types";
+export { fillTool } from "./fill";
+export type { PixelTool, ToolContext } from "./types";
 
 // Tool registry - maps tool IDs to tool implementations
 import { penTool } from "./pen";
 import { eraserTool } from "./eraser";
+import { fillTool } from "./fill";
 import { PixelTool } from "./types";
 
 export const toolRegistry: Record<string, PixelTool> = {
     [penTool.id]: penTool,
     [eraserTool.id]: eraserTool,
+    [fillTool.id]: fillTool,
 };
 
 /**
@@ -33,4 +36,3 @@ export function getTool(toolId: string): PixelTool | undefined {
 export function getAllTools(): PixelTool[] {
     return Object.values(toolRegistry);
 }
-
