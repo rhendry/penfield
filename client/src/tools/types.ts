@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import type { PixelObject } from "@shared/types/pixel-asset";
 
 /**
  * Pixel delta - keys are "x,y", values are color (string) or null to clear
@@ -49,6 +50,24 @@ export interface ToolContext {
      * Cancel a scheduled frame callback
      */
     cancelFrame: (id: number) => void;
+    
+    /**
+     * Get the currently active object for editing
+     * Returns null if no object is active
+     */
+    getActiveObject: () => PixelObject | null;
+    
+    /**
+     * Get the currently selected object
+     * Returns null if no object is selected
+     */
+    getSelectedObject: () => PixelObject | null;
+    
+    /**
+     * Apply pixel changes to a specific object
+     * If objectId is not provided, applies to active object
+     */
+    applyPixelsToObject: (delta: PixelDelta, objectId?: string) => void;
 }
 
 /**

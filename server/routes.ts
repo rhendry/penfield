@@ -177,6 +177,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // @ts-ignore
         if (!project || (project.userId !== req.user.id && req.user.role !== "admin")) return res.sendStatus(403);
 
+        // Migrate legacy content format if needed
+        if (asset.type === "pixel" && asset.content) {
+            const { migrateAssetContent } = await import("./migrations/migrate-assets");
+            const migratedAsset = migrateAssetContent(asset);
+            if (migratedAsset !== asset) {
+                // Save migrated content
+                await storage.updateAsset(id, migratedAsset.content);
+                res.json(migratedAsset);
+                return;
+            }
+        }
+
         res.json(asset);
     });
 
@@ -191,6 +203,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const project = await storage.getProject(asset.projectId);
         // @ts-ignore
         if (!project || (project.userId !== req.user.id && req.user.role !== "admin")) return res.sendStatus(403);
+
+        // Validate content format if it's a pixel asset
+        if (asset.type === "pixel" && req.body.content) {
+            const { pixelAssetContentSchema } = await import("@shared/types/pixel-asset");
+            const result = pixelAssetContentSchema.safeParse(req.body.content);
+            if (!result.success) {
+                return res.status(400).json({
+                    message: "Invalid pixel asset content format",
+                    errors: result.error.errors,
+                });
+            }
+        }
 
         const updatedAsset = await storage.updateAsset(id, req.body.content);
         res.json(updatedAsset);
