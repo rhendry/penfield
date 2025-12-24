@@ -13,7 +13,7 @@ interface RenderContextValue {
   addObject: (parentId?: string) => void;
   deleteObject: (objectId: string) => void;
   renameObject: (objectId: string, name: string) => void;
-  reorderObject: (objectId: string, newOrder: number, targetParentId?: string) => void;
+  reorderObject: (objectId: string, targetObjectId: string, position: "before" | "after") => void;
   reparentObject: (objectId: string, newParentId: string | null) => void;
   isDirty: boolean;
   markDirty: () => void;
@@ -60,12 +60,33 @@ export function RenderContextProvider({
 
   const addObject = useCallback((parentId?: string) => {
     setContent((prev) => {
-      const newObject = createDefaultObject(
-        `Object ${prev.objects.length + 1}`,
-        prev.objects.length
-      );
-
       if (parentId) {
+        // Find parent and calculate order for new child (lowest order = appears at end)
+        const findParentAndMinOrder = (
+          objects: PixelObject[],
+          targetId: string
+        ): { found: boolean; minOrder: number } => {
+          for (const obj of objects) {
+            if (obj.id === targetId) {
+              // Find minimum order among children (or use 0 if no children)
+              const minOrder =
+                obj.children.length > 0
+                  ? Math.min(...obj.children.map((c) => c.order))
+                  : 0;
+              return { found: true, minOrder: minOrder - 1 };
+            }
+            const result = findParentAndMinOrder(obj.children, targetId);
+            if (result.found) return result;
+          }
+          return { found: false, minOrder: 0 };
+        };
+
+        const { minOrder } = findParentAndMinOrder(prev.objects, parentId);
+        const newObject = createDefaultObject(
+          `Object ${prev.objects.length + 1}`,
+          minOrder
+        );
+
         const addToParent = (obj: PixelObject): PixelObject => {
           if (obj.id === parentId) {
             return {
@@ -85,6 +106,15 @@ export function RenderContextProvider({
           activeObjectId: newObject.id,
         };
       } else {
+        // Add to root - find minimum order among root objects
+        const minOrder =
+          prev.objects.length > 0
+            ? Math.min(...prev.objects.map((o) => o.order))
+            : 0;
+        const newObject = createDefaultObject(
+          `Object ${prev.objects.length + 1}`,
+          minOrder - 1
+        );
         return {
           ...prev,
           objects: [...prev.objects, newObject],
@@ -127,107 +157,69 @@ export function RenderContextProvider({
     updateObject(objectId, { name });
   }, [updateObject]);
 
-  const reorderObject = useCallback((objectId: string, newOrder: number, targetParentId?: string) => {
+  const reorderObject = useCallback((objectId: string, targetObjectId: string, position: "before" | "after") => {
     setContent((prev) => {
-      // Find the object and its current parent
-      const findObjectAndParent = (objects: PixelObject[], parentId: string | null = null): { obj: PixelObject | null; parentId: string | null } => {
+      // Helper to find object in tree
+      const findObject = (objects: PixelObject[], id: string): PixelObject | null => {
         for (const obj of objects) {
-          if (obj.id === objectId) {
-            return { obj, parentId };
-          }
-          const found = findObjectAndParent(obj.children, obj.id);
-          if (found.obj) return found;
+          if (obj.id === id) return obj;
+          const found = findObject(obj.children, id);
+          if (found) return found;
         }
-        return { obj: null, parentId: null };
+        return null;
       };
 
-      const { obj, parentId: currentParentId } = findObjectAndParent(prev.objects);
-      if (!obj) return prev;
+      const draggedObj = findObject(prev.objects, objectId);
+      if (!draggedObj) return prev;
       
-      const currentOrder = obj.order;
-
-      // If reparenting, handle that separately
-      if (targetParentId !== undefined && targetParentId !== currentParentId) {
-        // This will be handled by reparentObject
-        return prev;
-      }
-
-      // Reorder within the same parent level
-      const reorderInParent = (objects: PixelObject[], parentId: string | null): PixelObject[] => {
-        // Only process objects at the same level as the target
-        if (parentId !== currentParentId) {
-          return objects.map((o) => ({
-            ...o,
-            children: reorderInParent(o.children, o.id),
+      // Remove dragged from tree
+      const removeFromTree = (objects: PixelObject[]): PixelObject[] => {
+        return objects
+          .filter((obj) => obj.id !== objectId)
+          .map((obj) => ({
+            ...obj,
+            children: removeFromTree(obj.children),
           }));
-        }
-
-        // Get all siblings (objects at this level)
-        const siblings = [...objects];
-        const draggedIndex = siblings.findIndex((o) => o.id === objectId);
-        if (draggedIndex === -1) {
-          return objects.map((o) => ({
-            ...o,
-            children: reorderInParent(o.children, o.id),
-          }));
-        }
-
-        // Remove dragged object from siblings
-        const dragged = siblings[draggedIndex];
-        const withoutDragged = siblings.filter((_, i) => i !== draggedIndex);
-
-        // Find insertion point based on newOrder
-        let insertIndex = withoutDragged.length;
-        for (let i = 0; i < withoutDragged.length; i++) {
-          if (newOrder <= withoutDragged[i].order) {
-            insertIndex = i;
-            break;
-          }
-        }
-
-        // Insert dragged object at new position
-        const reordered = [
-          ...withoutDragged.slice(0, insertIndex),
-          { ...dragged, order: newOrder },
-          ...withoutDragged.slice(insertIndex),
-        ];
-
-        // Adjust orders of objects that need shifting
-        return reordered.map((o) => {
-          if (o.id === objectId) {
-            return {
-              ...o,
-              children: reorderInParent(o.children, o.id),
-            };
-          }
-          
-          // Find original position in siblings array
-          const oldIndex = siblings.findIndex((x) => x.id === o.id);
-          let adjustedOrder = o.order;
-          
-          if (draggedIndex < insertIndex) {
-            // Moving down - shift objects between old and new positions
-            if (oldIndex > draggedIndex && oldIndex <= insertIndex) {
-              adjustedOrder = o.order - 1;
+      };
+      
+      let newObjects = removeFromTree(prev.objects);
+      
+      // Insert at new location relative to target
+      const insertRelativeTo = (objects: PixelObject[]): PixelObject[] => {
+        const result: PixelObject[] = [];
+        for (const obj of objects) {
+          if (obj.id === targetObjectId) {
+            if (position === "before") {
+              result.push(draggedObj);
+              result.push({ ...obj, children: insertRelativeTo(obj.children) });
+            } else {
+              result.push({ ...obj, children: insertRelativeTo(obj.children) });
+              result.push(draggedObj);
             }
-          } else if (draggedIndex > insertIndex) {
-            // Moving up - shift objects between new and old positions
-            if (oldIndex >= insertIndex && oldIndex < draggedIndex) {
-              adjustedOrder = o.order + 1;
-            }
+          } else {
+            result.push({
+              ...obj,
+              children: insertRelativeTo(obj.children),
+            });
           }
-          
-          return {
-            ...o,
-            order: adjustedOrder,
-            children: reorderInParent(o.children, o.id),
-          };
-        });
+        }
+        return result;
+      };
+      
+      newObjects = insertRelativeTo(newObjects);
+      
+      // Renumber based on array position (higher index = lower order since we display descending)
+      const renumberTree = (objects: PixelObject[]): PixelObject[] => {
+        return objects.map((obj, idx) => ({
+          ...obj,
+          order: objects.length - 1 - idx, // First in array gets highest order
+          children: renumberTree(obj.children),
+        }));
       };
 
       return {
         ...prev,
-        objects: reorderInParent(prev.objects, null),
+        objects: renumberTree(newObjects),
       };
     });
     setIsDirty(true);
@@ -235,6 +227,31 @@ export function RenderContextProvider({
 
   const reparentObject = useCallback((objectId: string, newParentId: string | null) => {
     setContent((prev) => {
+      // Prevent dropping into own children hierarchy
+      const isDescendant = (obj: PixelObject, targetId: string): boolean => {
+        if (obj.id === targetId) return true;
+        return obj.children.some((child) => isDescendant(child, targetId));
+      };
+      
+      const findObject = (objects: PixelObject[], targetId: string): PixelObject | null => {
+        for (const obj of objects) {
+          if (obj.id === targetId) return obj;
+          const found = findObject(obj.children, targetId);
+          if (found) return found;
+        }
+        return null;
+      };
+      
+      const draggedObject = findObject(prev.objects, objectId);
+      if (!draggedObject) return prev;
+      
+      if (newParentId !== null) {
+        const targetParent = findObject(prev.objects, newParentId);
+        if (targetParent && isDescendant(targetParent, objectId)) {
+          return prev; // Cannot drop into own hierarchy
+        }
+      }
+
       // Find and remove object from current parent
       const removeFromTree = (objects: PixelObject[]): { objects: PixelObject[]; removed: PixelObject | null } => {
         for (let i = 0; i < objects.length; i++) {
@@ -261,23 +278,25 @@ export function RenderContextProvider({
       const { objects: objectsWithout, removed } = removeFromTree(prev.objects);
       if (!removed) return prev;
 
-      // Find max order in target parent
-      const findMaxOrder = (objects: PixelObject[], targetId: string | null): number => {
+      // Find minimum order in target parent (lowest = appears at end)
+      const findMinOrder = (objects: PixelObject[], targetId: string | null): number => {
         if (targetId === null) {
-          return objects.length > 0 ? Math.max(...objects.map((o) => o.order)) : -1;
+          return objects.length > 0 ? Math.min(...objects.map((o) => o.order)) : 0;
         }
         for (const obj of objects) {
           if (obj.id === targetId) {
-            return obj.children.length > 0 ? Math.max(...obj.children.map((o) => o.order)) : -1;
+            return obj.children.length > 0
+              ? Math.min(...obj.children.map((o) => o.order))
+              : 0;
           }
-          const found = findMaxOrder(obj.children, targetId);
-          if (found !== -1) return found;
+          const found = findMinOrder(obj.children, targetId);
+          if (found !== 0 || obj.children.length === 0) return found;
         }
-        return -1;
+        return 0;
       };
 
-      const maxOrder = findMaxOrder(objectsWithout, newParentId);
-      const newObject = { ...removed, order: maxOrder + 1 };
+      const minOrder = findMinOrder(objectsWithout, newParentId);
+      const newObject = { ...removed, order: minOrder - 1 };
 
       // Add to new parent
       const addToParent = (objects: PixelObject[]): PixelObject[] => {
