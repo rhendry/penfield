@@ -2,6 +2,9 @@ import { useCallback, useRef, useEffect } from "react";
 import { PixelCanvas, PixelCanvasHandle } from "./pixel-canvas";
 import { Tool } from "@/components/toolbelt/types";
 import { getTool, ToolContext } from "@/tools";
+import { useRenderContext } from "./render-context";
+import type { PixelAssetContent } from "@shared/types/pixel-asset";
+import { migrateLegacyContent, getActiveObject } from "@shared/utils/pixel-asset";
 
 interface PixelEditorProps {
     initialContent: any;
@@ -20,6 +23,7 @@ export function PixelEditor({
     onPixelsChange,
     className,
 }: PixelEditorProps) {
+    const { content, setContent, markDirty } = useRenderContext();
     const canvasRef = useRef<PixelCanvasHandle>(null);
     const maxSize = 256;
     const halfSize = maxSize / 2;
@@ -36,12 +40,31 @@ export function PixelEditor({
         onPixelsChangeRef.current = onPixelsChange;
     }, [onPixelsChange]);
 
-    // Load initial content
+    // Load initial content and migrate if needed
     useEffect(() => {
-        if (canvasRef.current && initialContent?.grid) {
-            canvasRef.current.loadPixels(initialContent.grid);
+        if (initialContent) {
+            // Check if it's legacy format
+            if ("grid" in initialContent && !("objects" in initialContent)) {
+                const migrated = migrateLegacyContent(initialContent);
+                setContent(migrated);
+            } else if ("objects" in initialContent) {
+                // Already in new format
+                setContent(initialContent as PixelAssetContent);
+            }
         }
-    }, [initialContent]);
+    }, [initialContent, setContent]);
+
+    // Load pixels from active object when content changes
+    useEffect(() => {
+        if (canvasRef.current) {
+            const activeObject = getActiveObject(content);
+            if (activeObject) {
+                canvasRef.current.loadPixels(activeObject.pixels);
+            } else {
+                canvasRef.current.clear();
+            }
+        }
+    }, [content.activeObjectId, content.objects]);
 
     // Create tool context - provides canvas access methods
     const createToolContext = useCallback((): ToolContext => {
@@ -69,8 +92,48 @@ export function PixelEditor({
 
             requestFrame: (callback) => requestAnimationFrame(callback),
             cancelFrame: (id) => cancelAnimationFrame(id),
+
+            getActiveObject: () => {
+                return getActiveObject(content);
+            },
+
+            getSelectedObject: () => {
+                // For now, selected object is same as active object
+                // This can be extended later if we want separate selection
+                return getActiveObject(content);
+            },
+
+            applyPixelsToObject: (delta, objectId) => {
+                const targetId = objectId ?? content.activeObjectId;
+                if (!targetId) return;
+
+                const updateObject = (obj: typeof content.objects[0]): typeof content.objects[0] => {
+                    if (obj.id === targetId) {
+                        const newPixels = { ...obj.pixels };
+                        for (const [key, value] of Object.entries(delta)) {
+                            if (value === null) {
+                                delete newPixels[key];
+                            } else {
+                                newPixels[key] = value;
+                            }
+                        }
+                        return { ...obj, pixels: newPixels };
+                    }
+                    return {
+                        ...obj,
+                        children: obj.children.map(updateObject),
+                    };
+                };
+
+                const newContent = {
+                    ...content,
+                    objects: content.objects.map(updateObject),
+                };
+                setContent(newContent);
+                markDirty();
+            },
         };
-    }, [leftClickColor, rightClickColor, halfSize]);
+    }, [leftClickColor, rightClickColor, halfSize, content, setContent, markDirty]);
 
     // Handle tool activation/deactivation when selected tool changes
     useEffect(() => {
@@ -128,15 +191,38 @@ export function PixelEditor({
 
         currentButtonRef.current = null;
 
-        // Notify parent of pixel changes (for saving)
-        if (onPixelsChangeRef.current && canvasRef.current) {
-            onPixelsChangeRef.current(canvasRef.current.getAllPixels());
+        // Update active object's pixels from canvas
+        const activeObject = getActiveObject(content);
+        if (activeObject && canvasRef.current) {
+            const pixels = canvasRef.current.getAllPixels();
+            const updateObject = (obj: typeof content.objects[0]): typeof content.objects[0] => {
+                if (obj.id === activeObject.id) {
+                    return { ...obj, pixels };
+                }
+                return {
+                    ...obj,
+                    children: obj.children.map(updateObject),
+                };
+            };
+
+            const newContent = {
+                ...content,
+                objects: content.objects.map(updateObject),
+            };
+            setContent(newContent);
+            markDirty();
+
+            // Notify parent of pixel changes (for saving)
+            if (onPixelsChangeRef.current) {
+                onPixelsChangeRef.current(pixels);
+            }
         }
-    }, [selectedTool, createToolContext]);
+    }, [selectedTool, createToolContext, content, setContent, markDirty]);
 
     return (
         <PixelCanvas
             ref={canvasRef}
+            content={content}
             onPixelClick={handlePixelClick}
             onPixelDrag={handlePixelDrag}
             onMouseUp={handleMouseUp}

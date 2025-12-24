@@ -9,18 +9,21 @@
 export { penTool } from "./pen";
 export { eraserTool } from "./eraser";
 export { fillTool } from "./fill";
+export { objectExplorerTool } from "./object-explorer";
 export type { PixelTool, ToolContext, PixelDelta } from "./types";
 
 // Tool registry - maps tool IDs to tool implementations
 import { penTool } from "./pen";
 import { eraserTool } from "./eraser";
 import { fillTool } from "./fill";
+import { objectExplorerTool } from "./object-explorer";
 import { PixelTool } from "./types";
 
 export const toolRegistry: Record<string, PixelTool> = {
     [penTool.id]: penTool,
     [eraserTool.id]: eraserTool,
     [fillTool.id]: fillTool,
+    [objectExplorerTool.id]: objectExplorerTool,
 };
 
 /**

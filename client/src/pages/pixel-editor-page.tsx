@@ -20,6 +20,9 @@ import { ColorPicker } from "@/components/utilities/color-picker";
 import { ColorPalette } from "@/components/utilities/color-palette";
 import { Palette } from "@/components/utilities/palette-selector";
 import { ReactNode } from "react";
+import { RenderContextProvider } from "@/components/editor/render-context";
+import { migrateLegacyContent } from "@shared/utils/pixel-asset";
+import type { PixelAssetContent } from "@shared/types/pixel-asset";
 
 function PixelEditorContent() {
     const [, params] = useRoute("/assets/:id/edit");
@@ -303,7 +306,17 @@ function PixelEditorContent() {
         };
     }, [selectedTool, toolUtilities]);
 
-    // Handle pixels change
+    // Initialize content from asset
+    const initialContent = useMemo(() => {
+        if (!asset?.content) return null;
+        // Check if it's legacy format
+        if ("grid" in asset.content && !("objects" in asset.content)) {
+            return migrateLegacyContent(asset.content as { grid?: Record<string, string> });
+        }
+        return asset.content as PixelAssetContent;
+    }, [asset]);
+
+    // Handle pixels change (legacy support)
     const handlePixelsChange = useCallback((newPixels: Record<string, string>) => {
         setPixels(newPixels);
     }, []);
@@ -331,6 +344,8 @@ function PixelEditorContent() {
     });
 
     const handleSave = useCallback(async () => {
+        // For now, save legacy format for backward compatibility
+        // TODO: Update to save full PixelAssetContent when server supports it
         await saveAssetMutation.mutateAsync({ grid: pixels });
     }, [pixels, saveAssetMutation]);
 
@@ -416,15 +431,19 @@ function PixelEditorContent() {
 
             <main className="flex-1 relative overflow-hidden">
                 {/* Pixel Canvas - fills entire space */}
-                <div className="absolute inset-0">
-                    <PixelEditor
-                        initialContent={asset.content}
-                        selectedTool={selectedTool}
-                        leftClickColor={leftClickColor}
-                        rightClickColor={rightClickColor}
-                        onPixelsChange={handlePixelsChange}
-                    />
-                </div>
+                {initialContent && (
+                    <RenderContextProvider initialContent={initialContent}>
+                        <div className="absolute inset-0">
+                            <PixelEditor
+                                initialContent={asset.content}
+                                selectedTool={selectedTool}
+                                leftClickColor={leftClickColor}
+                                rightClickColor={rightClickColor}
+                                onPixelsChange={handlePixelsChange}
+                            />
+                        </div>
+                    </RenderContextProvider>
+                )}
 
                 {/* Toolbelt - bottom left */}
                 <Toolbelt

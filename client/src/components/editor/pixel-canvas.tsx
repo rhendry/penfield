@@ -1,6 +1,8 @@
 import { useRef, useState, useEffect, useCallback, useImperativeHandle, forwardRef } from "react";
 import { cn } from "@/lib/utils";
 import type { PixelDelta } from "@/tools/types";
+import type { PixelAssetContent } from "@shared/types/pixel-asset";
+import { renderAssetContent } from "./rendering-utils";
 
 export interface PixelCanvasProps {
     /** Maximum canvas size in pixels (width and height) */
@@ -17,6 +19,8 @@ export interface PixelCanvasProps {
     xAxisColor?: string;
     /** Color for y-axis line */
     yAxisColor?: string;
+    /** PixelAssetContent for object-based rendering */
+    content?: PixelAssetContent;
     /** Callback when a pixel is clicked */
     onPixelClick?: (x: number, y: number, button: "left" | "right") => void;
     /** Callback when dragging over pixels */
@@ -151,6 +155,7 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(funct
     gridLineColor = "#e5e5e5",
     xAxisColor = "#3b82f6",
     yAxisColor = "#3b82f6",
+    content,
     onPixelClick,
     onPixelDrag,
     onMouseUp,
@@ -445,6 +450,17 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(funct
         // Draw texture
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     }, [containerSize, halfSize, maxSize, zoom, panX, panY, backgroundColor]);
+
+    // Update ImageData when content changes (object-based rendering)
+    useEffect(() => {
+        if (content && imageDataRef.current) {
+            const rendered = renderAssetContent(content, maxSize, halfSize);
+            imageDataRef.current.data.set(rendered.data);
+            textureDirtyRef.current = true;
+            dirtyRegionRef.current = null; // Full update
+            setRenderTrigger((t) => t + 1);
+        }
+    }, [content, maxSize, halfSize]);
 
     // Render on view changes or pixel updates
     useEffect(() => {
