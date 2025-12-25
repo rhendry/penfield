@@ -133,7 +133,7 @@ function PixelEditorContent() {
     // Check if object explorer feature is enabled
     const objectExplorerEnabled = useFeatureFlag("object-explorer");
 
-    // Initialize default toolbelt on mount (only once)
+    // Initialize default toolbelt on mount and when feature flag changes
     const [hasInitialized, setHasInitialized] = useState(false);
     useEffect(() => {
         if (!hasInitialized && toolbeltSlots.length === 0) {
@@ -146,6 +146,28 @@ function PixelEditorContent() {
             setHasInitialized(true);
         }
     }, [hasInitialized, toolbeltSlots.length, setToolbeltSlots, objectExplorerEnabled]);
+
+    // Update toolbelt when feature flag changes (after initial load)
+    useEffect(() => {
+        if (!hasInitialized) return;
+
+        const hasObjectExplorer = toolbeltSlots.some((slot) => slot.tool?.id === "object-explorer");
+
+        if (objectExplorerEnabled && !hasObjectExplorer) {
+            // Add object explorer tool
+            const objectExplorerSlot = DEFAULT_PIXEL_TOOLBELT.find((slot) => slot.tool?.id === "object-explorer");
+            if (objectExplorerSlot) {
+                setToolbeltSlots([...toolbeltSlots, objectExplorerSlot]);
+            }
+        } else if (!objectExplorerEnabled && hasObjectExplorer) {
+            // Remove object explorer tool
+            setToolbeltSlots(toolbeltSlots.filter((slot) => slot.tool?.id !== "object-explorer"));
+            // If currently selected tool is object explorer, switch to pen
+            if (selectedTool?.id === "object-explorer") {
+                setSelectedTool(PEN_TOOL);
+            }
+        }
+    }, [objectExplorerEnabled, hasInitialized, toolbeltSlots, setToolbeltSlots, selectedTool]);
 
     // Set initial palette
     useEffect(() => {

@@ -27,13 +27,14 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { insertUserSchema } from "@shared/schema";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { Link } from "wouter";
 import { z } from "zod";
-import { useFeatureFlags } from "@/hooks/use-feature-flags";
+import { useFeatureFlags, type FeatureFlag } from "@/hooks/use-feature-flags";
 import { Switch } from "@/components/ui/switch";
 import { Loader2 } from "lucide-react";
+import { useState } from "react";
 
 export default function AdminDashboard() {
     const { user } = useAuth();
@@ -182,11 +183,16 @@ export default function AdminDashboard() {
 function FeatureFlagsCard() {
     const { toast } = useToast();
     const { data: flags, isLoading } = useFeatureFlags();
+    const [showCreateForm, setShowCreateForm] = useState(false);
+    const [newFlagName, setNewFlagName] = useState("");
+    const [newFlagDescription, setNewFlagDescription] = useState("");
 
-    const updateFlagMutation = useMutation({
-        mutationFn: async ({ name, enabled }: { name: string; enabled: boolean }) => {
-            const res = await apiRequest("PUT", `/api/admin/feature-flags/${name}`, {
-                enabled: enabled ? "true" : "false",
+    const createFlagMutation = useMutation({
+        mutationFn: async ({ name, description }: { name: string; description?: string }) => {
+            const res = await apiRequest("POST", "/api/admin/feature-flags", {
+                name,
+                enabled: "false",
+                description: description || null,
             });
             return await res.json();
         },
@@ -195,8 +201,11 @@ function FeatureFlagsCard() {
             queryClient.invalidateQueries({ queryKey: ["/api/feature-flags"] });
             toast({
                 title: "Success",
-                description: "Feature flag updated",
+                description: "Feature flag created",
             });
+            setShowCreateForm(false);
+            setNewFlagName("");
+            setNewFlagDescription("");
         },
         onError: (error: Error) => {
             toast({
@@ -207,19 +216,132 @@ function FeatureFlagsCard() {
         },
     });
 
+    const updateFlagMutation = useMutation({
+        mutationFn: async ({ name, enabled }: { name: string; enabled: boolean }) => {
+            const res = await apiRequest("PUT", `/api/admin/feature-flags/${name}`, {
+                enabled: enabled ? "true" : "false",
+            });
+            return await res.json();
+        },
+        onMutate: async ({ name, enabled }) => {
+            // Cancel outgoing refetches
+            await queryClient.cancelQueries({ queryKey: ["/api/admin/feature-flags"] });
+            
+            // Snapshot previous value
+            const previousFlags = queryClient.getQueryData<FeatureFlag[]>(["/api/admin/feature-flags"]);
+            
+            // Optimistically update
+            if (previousFlags) {
+                queryClient.setQueryData<FeatureFlag[]>(["/api/admin/feature-flags"], (old) =>
+                    old?.map((flag) => flag.name === name ? { ...flag, enabled } : flag) ?? []
+                );
+            }
+            
+            return { previousFlags };
+        },
+        onError: (error: Error, variables, context) => {
+            // Rollback on error
+            if (context?.previousFlags) {
+                queryClient.setQueryData(["/api/admin/feature-flags"], context.previousFlags);
+            }
+            toast({
+                title: "Error",
+                description: error.message,
+                variant: "destructive",
+            });
+        },
+        onSuccess: async () => {
+            // Refetch to ensure we have the latest data
+            await queryClient.refetchQueries({ queryKey: ["/api/admin/feature-flags"] });
+            await queryClient.refetchQueries({ 
+                predicate: (query) => {
+                    const key = query.queryKey[0];
+                    return typeof key === "string" && key.startsWith("/api/feature-flags/");
+                }
+            });
+            toast({
+                title: "Success",
+                description: "Feature flag updated",
+            });
+        },
+    });
+
     const handleToggle = (name: string, currentEnabled: boolean) => {
         updateFlagMutation.mutate({ name, enabled: !currentEnabled });
+    };
+
+    const handleCreate = () => {
+        if (!newFlagName.trim()) {
+            toast({
+                title: "Error",
+                description: "Flag name is required",
+                variant: "destructive",
+            });
+            return;
+        }
+        createFlagMutation.mutate({
+            name: newFlagName.trim(),
+            description: newFlagDescription.trim() || undefined,
+        });
     };
 
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Feature Flags</CardTitle>
-                <CardDescription>
-                    Enable or disable features for all users.
-                </CardDescription>
+                <div className="flex items-center justify-between">
+                    <div>
+                        <CardTitle>Feature Flags</CardTitle>
+                        <CardDescription>
+                            Enable or disable features for all users.
+                        </CardDescription>
+                    </div>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowCreateForm(!showCreateForm)}
+                    >
+                        {showCreateForm ? "Cancel" : "Create Flag"}
+                    </Button>
+                </div>
             </CardHeader>
             <CardContent>
+                {showCreateForm && (
+                    <div className="mb-6 p-4 border rounded-lg space-y-4">
+                        <div>
+                            <label className="text-sm font-medium mb-2 block">Flag Name</label>
+                            <Input
+                                placeholder="e.g., object-explorer"
+                                value={newFlagName}
+                                onChange={(e) => setNewFlagName(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                        handleCreate();
+                                    }
+                                }}
+                            />
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium mb-2 block">Description (optional)</label>
+                            <Input
+                                placeholder="Brief description of what this flag controls"
+                                value={newFlagDescription}
+                                onChange={(e) => setNewFlagDescription(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                        handleCreate();
+                                    }
+                                }}
+                            />
+                        </div>
+                        <Button
+                            onClick={handleCreate}
+                            disabled={createFlagMutation.isPending || !newFlagName.trim()}
+                        >
+                            {createFlagMutation.isPending ? "Creating..." : "Create Flag"}
+                        </Button>
+                    </div>
+                )}
+
                 {isLoading ? (
                     <div className="flex items-center justify-center p-8">
                         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -249,7 +371,7 @@ function FeatureFlagsCard() {
                     </div>
                 ) : (
                     <div className="text-sm text-muted-foreground p-4">
-                        No feature flags configured. Create them via the API or database.
+                        No feature flags configured. Click "Create Flag" above to add one.
                     </div>
                 )}
             </CardContent>

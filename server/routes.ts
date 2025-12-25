@@ -111,7 +111,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             return res.status(403).json({ message: "Forbidden" });
         }
         const flags = await storage.getFeatureFlags_async();
-        res.json(flags);
+        // Convert enabled from "true"/"false" string to boolean for frontend
+        const convertedFlags = flags.map((flag) => ({
+            ...flag,
+            enabled: flag.enabled === "true",
+        }));
+        res.json(convertedFlags);
     });
 
     app.get("/api/feature-flags/:name", async (req, res) => {
@@ -135,7 +140,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         try {
             const flag = await storage.updateFeatureFlag_async(req.params.name, parsed.data);
-            res.json(flag);
+            // Convert enabled from "true"/"false" string to boolean for frontend
+            res.json({
+                ...flag,
+                enabled: flag.enabled === "true",
+            });
         } catch (error: any) {
             if (error.message.includes("not found")) {
                 return res.status(404).json({ message: error.message });
