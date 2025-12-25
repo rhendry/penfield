@@ -25,6 +25,7 @@ import { migrateLegacyContent } from "@shared/utils/pixel-asset";
 import { getTool } from "@/tools";
 import type { PixelAssetContent } from "@shared/types/pixel-asset";
 import { useFeatureFlag } from "@/hooks/use-feature-flags";
+import { useUndoRedo } from "@/hooks/use-undo-redo";
 
 // SaveButton component that accesses RenderContext
 function SaveButton({ onSave, isPending }: { onSave: (content: PixelAssetContent) => Promise<void>; isPending: boolean }) {
@@ -460,81 +461,232 @@ function PixelEditorContent() {
         <div className="min-h-screen bg-background flex flex-col relative">
             {initialContent && (
                 <RenderContextProvider initialContent={initialContent}>
-                    <header className="border-b p-4 flex items-center gap-4 z-50">
-                        <Link href={`/projects/${asset.projectId}`}>
-                            <Button variant="ghost" size="icon">
-                                <ArrowLeft className="h-4 w-4" />
-                            </Button>
-                        </Link>
-                        <div className="flex-1">
-                            <h1 className="text-xl font-bold">{asset.name}</h1>
-                            <p className="text-xs text-muted-foreground">{asset.type} editor</p>
-                        </div>
-                        <SaveButton onSave={handleSave} isPending={saveAssetMutation.isPending} />
-                    </header>
-
-                    <main className="flex-1 relative overflow-hidden">
-                        {/* Pixel Canvas - fills entire space */}
-                        <div className="absolute inset-0">
-                            <PixelEditor
-                                initialContent={asset.content}
-                                selectedTool={selectedTool}
-                                leftClickColor={leftClickColor}
-                                rightClickColor={rightClickColor}
-                            />
-                        </div>
-
-                        {/* Utilities Panel - right side */}
-                        <UtilitiesPanel
-                            isExpanded={utilitiesPanelExpanded}
-                            onToggle={() => setUtilitiesPanelExpanded((prev) => !prev)}
-                            selectedTool={selectedToolWithUtilities || undefined}
-                            width={utilitiesPanelWidth}
-                            onWidthChange={setUtilitiesPanelWidth}
-                        />
-
-                        {/* Toolbelt - bottom left */}
-                        <Toolbelt
-                            slots={toolbeltSlots}
-                            onSlotClick={handleToolbeltSlotClick}
-                            selectedToolId={selectedTool?.id}
-                        />
-
-                        {/* Quick Select - to right of toolbelt */}
-                        <QuickSelect
-                            slots={quickSelectSlots}
-                            onSelect={handleQuickSelectClick}
-                            onRemove={removeQuickSelectSlot}
-                        />
-
-                        {/* Toolkit Explorer - modal */}
-                        <ToolkitExplorer
-                            isOpen={isExplorerOpen}
-                            onClose={() => setIsExplorerOpen(false)}
-                            onSelectTool={handleToolSelect}
-                            onSelectToolbelt={handleToolbeltSelect}
-                            onAction={() => { }}
-                            tools={availableTools.map((t) => ({
-                                id: String(t.id),
-                                name: t.name,
-                                description: t.description,
-                                iconType: t.iconType,
-                                iconName: t.iconName,
-                                badgeType: t.badgeType,
-                                badgeName: t.badgeName,
-                                badgeAlignment: t.badgeAlignment,
-                            }))}
-                            toolbelts={availableToolbelts.map((tb) => ({
-                                id: String(tb.id),
-                                name: tb.name,
-                                description: tb.description,
-                                hotkey: tb.hotkey,
-                            }))}
-                        />
-                    </main>
+                    <PixelEditorWithUndoRedo
+                        asset={asset}
+                        id={id}
+                        selectedTool={selectedTool}
+                        leftClickColor={leftClickColor}
+                        rightClickColor={rightClickColor}
+                        toolbeltSlots={toolbeltSlots}
+                        quickSelectSlots={quickSelectSlots}
+                        availableTools={availableTools}
+                        availableToolbelts={availableToolbelts}
+                        palettes={palettes}
+                        currentPaletteId={currentPaletteId}
+                        currentPaletteColors={currentPaletteColors}
+                        utilitiesPanelExpanded={utilitiesPanelExpanded}
+                        utilitiesPanelWidth={utilitiesPanelWidth}
+                        objectExplorerEnabled={objectExplorerEnabled}
+                        setSelectedTool={setSelectedTool}
+                        setLeftClickColor={setLeftClickColor}
+                        setRightClickColor={setRightClickColor}
+                        setCurrentPaletteId={setCurrentPaletteId}
+                        setUtilitiesPanelExpanded={setUtilitiesPanelExpanded}
+                        setUtilitiesPanelWidth={setUtilitiesPanelWidth}
+                        handleToolbeltSlotClick={handleToolbeltSlotClick}
+                        handleQuickSelectClick={handleQuickSelectClick}
+                        handleToolSelect={handleToolSelect}
+                        handleToolbeltSelect={handleToolbeltSelect}
+                        removeQuickSelectSlot={removeQuickSelectSlot}
+                        setIsExplorerOpen={setIsExplorerOpen}
+                        isExplorerOpen={isExplorerOpen}
+                        toolUtilities={toolUtilities}
+                        selectedToolWithUtilities={selectedToolWithUtilities}
+                        handleSave={handleSave}
+                        saveAssetMutation={saveAssetMutation}
+                    />
                 </RenderContextProvider>
             )}
         </div>
+    );
+}
+
+// Component that uses RenderContext and undo/redo
+function PixelEditorWithUndoRedo({
+    asset,
+    id,
+    selectedTool,
+    leftClickColor,
+    rightClickColor,
+    toolbeltSlots,
+    quickSelectSlots,
+    availableTools,
+    availableToolbelts,
+    palettes,
+    currentPaletteId,
+    currentPaletteColors,
+    utilitiesPanelExpanded,
+    utilitiesPanelWidth,
+    objectExplorerEnabled,
+    setSelectedTool,
+    setLeftClickColor,
+    setRightClickColor,
+    setCurrentPaletteId,
+    setUtilitiesPanelExpanded,
+    setUtilitiesPanelWidth,
+    handleToolbeltSlotClick,
+    handleQuickSelectClick,
+    handleToolSelect,
+    handleToolbeltSelect,
+    removeQuickSelectSlot,
+    setIsExplorerOpen,
+    isExplorerOpen,
+    toolUtilities,
+    selectedToolWithUtilities,
+    handleSave,
+    saveAssetMutation,
+}: {
+    asset: Asset;
+    id: string | undefined;
+    selectedTool: Tool | null;
+    leftClickColor: string;
+    rightClickColor: string;
+    toolbeltSlots: ToolbeltSlot[];
+    quickSelectSlots: any[];
+    availableTools: Tool[];
+    availableToolbelts: any[];
+    palettes: Palette[];
+    currentPaletteId: string;
+    currentPaletteColors: string[];
+    utilitiesPanelExpanded: boolean;
+    utilitiesPanelWidth: number;
+    objectExplorerEnabled: boolean;
+    setSelectedTool: (tool: Tool | null) => void;
+    setLeftClickColor: (color: string) => void;
+    setRightClickColor: (color: string) => void;
+    setCurrentPaletteId: (id: string) => void;
+    setUtilitiesPanelExpanded: (expanded: boolean) => void;
+    setUtilitiesPanelWidth: (width: number) => void;
+    handleToolbeltSlotClick: (slotId: string) => void;
+    handleQuickSelectClick: (slotId: string) => void;
+    handleToolSelect: (toolId: string) => void;
+    handleToolbeltSelect: (toolbeltId: string) => void;
+    removeQuickSelectSlot: (slotId: string) => void;
+    setIsExplorerOpen: (open: boolean) => void;
+    isExplorerOpen: boolean;
+    toolUtilities: ReactNode | ReactNode[] | undefined;
+    selectedToolWithUtilities: Tool | null;
+    handleSave: (content: PixelAssetContent) => Promise<void>;
+    saveAssetMutation: any;
+}) {
+    const { content, setContent } = useRenderContext();
+    const { undo, redo, pushAction, canUndo, canRedo } = useUndoRedo(id, content, setContent);
+
+    // Handle undo/redo keyboard shortcuts (Ctrl+Z / Ctrl+Y)
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Don't intercept if user is typing in an input
+            const target = e.target as HTMLElement;
+            if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) {
+                return;
+            }
+
+            // Ctrl+Z (or Cmd+Z on Mac) for undo
+            if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (canUndo) {
+                    undo();
+                }
+            }
+            // Ctrl+Y (or Cmd+Y on Mac) for redo, or Ctrl+Shift+Z
+            else if (
+                ((e.ctrlKey || e.metaKey) && e.key === "y") ||
+                ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "z")
+            ) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (canRedo) {
+                    redo();
+                }
+            }
+        };
+
+        // Use capture phase to catch events before they reach other handlers
+        window.addEventListener("keydown", handleKeyDown, { capture: true });
+        return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
+    }, [undo, redo, canUndo, canRedo]);
+
+    return (
+        <>
+            <header className="border-b p-4 flex items-center gap-4 z-50">
+                <Link href={`/projects/${asset.projectId}`}>
+                    <Button variant="ghost" size="icon">
+                        <ArrowLeft className="h-4 w-4" />
+                    </Button>
+                </Link>
+                <div className="flex-1">
+                    <h1 className="text-xl font-bold">{asset.name}</h1>
+                    <p className="text-xs text-muted-foreground">{asset.type} editor</p>
+                </div>
+                <SaveButton onSave={handleSave} isPending={saveAssetMutation.isPending} />
+            </header>
+
+            <main className="flex-1 relative overflow-hidden">
+                {/* Pixel Canvas - fills entire space */}
+                <div className="absolute inset-0">
+                    <PixelEditor
+                        initialContent={asset.content}
+                        selectedTool={selectedTool}
+                        leftClickColor={leftClickColor}
+                        rightClickColor={rightClickColor}
+                        onAction={pushAction}
+                        onUndo={undo}
+                        onRedo={redo}
+                        canUndo={canUndo}
+                        canRedo={canRedo}
+                    />
+                </div>
+
+                {/* Utilities Panel - right side */}
+                <UtilitiesPanel
+                    isExpanded={utilitiesPanelExpanded}
+                    onToggle={() => setUtilitiesPanelExpanded(!utilitiesPanelExpanded)}
+                    selectedTool={selectedToolWithUtilities || undefined}
+                    width={utilitiesPanelWidth}
+                    onWidthChange={setUtilitiesPanelWidth}
+                />
+
+                {/* Toolbelt - bottom left */}
+                <Toolbelt
+                    slots={toolbeltSlots}
+                    onSlotClick={handleToolbeltSlotClick}
+                    selectedToolId={selectedTool?.id}
+                />
+
+                {/* Quick Select - to right of toolbelt */}
+                <QuickSelect
+                    slots={quickSelectSlots}
+                    onSelect={handleQuickSelectClick}
+                    onRemove={removeQuickSelectSlot}
+                />
+
+                {/* Toolkit Explorer - modal */}
+                <ToolkitExplorer
+                    isOpen={isExplorerOpen}
+                    onClose={() => setIsExplorerOpen(false)}
+                    onSelectTool={handleToolSelect}
+                    onSelectToolbelt={handleToolbeltSelect}
+                    onAction={() => { }}
+                    tools={availableTools.map((t) => ({
+                        id: String(t.id),
+                        name: t.name,
+                        description: t.description,
+                        iconType: t.iconType,
+                        iconName: t.iconName,
+                        badgeType: t.badgeType,
+                        badgeName: t.badgeName,
+                        badgeAlignment: t.badgeAlignment,
+                    }))}
+                    toolbelts={availableToolbelts.map((tb) => ({
+                        id: String(tb.id),
+                        name: tb.name,
+                        description: tb.description,
+                        hotkey: tb.hotkey,
+                    }))}
+                />
+            </main>
+        </>
     );
 }
 

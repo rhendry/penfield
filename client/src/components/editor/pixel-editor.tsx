@@ -5,6 +5,11 @@ import { getTool, ToolContext } from "@/tools";
 import { useRenderContext } from "./render-context";
 import type { PixelAssetContent } from "@shared/types/pixel-asset";
 import { migrateLegacyContent, getActiveObject } from "@shared/utils/pixel-asset";
+import type { UndoableAction } from "@/utils/undo-redo-actions";
+import { createPixelChangeAction } from "@/utils/undo-redo-actions";
+import { UndoButton } from "@/components/atoms/undo-button";
+import { RedoButton } from "@/components/atoms/redo-button";
+import { cn } from "@/lib/utils";
 
 interface PixelEditorProps {
     initialContent: any;
@@ -12,6 +17,11 @@ interface PixelEditorProps {
     leftClickColor: string;
     rightClickColor: string;
     onPixelsChange?: (pixels: Record<string, string>) => void;
+    onAction?: (action: UndoableAction) => void;
+    onUndo?: () => void;
+    onRedo?: () => void;
+    canUndo?: boolean;
+    canRedo?: boolean;
     className?: string;
 }
 
@@ -21,6 +31,11 @@ export function PixelEditor({
     leftClickColor,
     rightClickColor,
     onPixelsChange,
+    onAction,
+    onUndo,
+    onRedo,
+    canUndo = false,
+    canRedo = false,
     className,
 }: PixelEditorProps) {
     const { content, setContent, markDirty } = useRenderContext();
@@ -39,6 +54,16 @@ export function PixelEditor({
     useEffect(() => {
         onPixelsChangeRef.current = onPixelsChange;
     }, [onPixelsChange]);
+
+    // Store onAction in ref to avoid dependency issues
+    const onActionRef = useRef(onAction);
+    useEffect(() => {
+        onActionRef.current = onAction;
+    }, [onAction]);
+
+    // Track action state for undo/redo
+    const actionBeforeStateRef = useRef<Record<string, string> | null>(null);
+    const actionObjectIdRef = useRef<string | null>(null);
 
     // Load initial content and migrate if needed
     useEffect(() => {
@@ -93,6 +118,15 @@ export function PixelEditor({
             applyPixelsToObject: (delta, objectId) => {
                 const targetId = objectId ?? content.activeObjectId;
                 if (!targetId) return;
+
+                // Capture before state on first call (pointer down)
+                if (actionBeforeStateRef.current === null && actionObjectIdRef.current === null) {
+                    const activeObject = getActiveObject(content);
+                    if (activeObject && activeObject.id === targetId) {
+                        actionBeforeStateRef.current = { ...activeObject.pixels };
+                        actionObjectIdRef.current = targetId;
+                    }
+                }
 
                 const updateObject = (obj: typeof content.objects[0]): typeof content.objects[0] => {
                     if (obj.id === targetId) {
@@ -153,9 +187,20 @@ export function PixelEditor({
         const tool = getTool(selectedTool.id);
         if (!tool) return;
 
+        // Reset action tracking for new operation
+        actionBeforeStateRef.current = null;
+        actionObjectIdRef.current = null;
+
+        // Capture before state
+        const activeObject = getActiveObject(content);
+        if (activeObject) {
+            actionBeforeStateRef.current = { ...activeObject.pixels };
+            actionObjectIdRef.current = activeObject.id;
+        }
+
         currentButtonRef.current = button;
         tool.onPointerDown(x, y, button, createToolContext());
-    }, [selectedTool, createToolContext]);
+    }, [selectedTool, createToolContext, content]);
 
     // Handle pixel drag - delegate to tool
     const handlePixelDrag = useCallback((x: number, y: number, _button: "left" | "right") => {
@@ -199,7 +244,34 @@ export function PixelEditor({
             setContent(newContent);
             markDirty();
 
-        // Notify parent of pixel changes (for saving)
+            // Create undo action if we tracked changes
+            if (
+                actionBeforeStateRef.current !== null &&
+                actionObjectIdRef.current !== null &&
+                actionObjectIdRef.current === activeObject.id &&
+                onActionRef.current
+            ) {
+                const beforePixels = actionBeforeStateRef.current;
+                const afterPixels = pixels;
+
+                // Only create action if pixels actually changed
+                const beforeKeys = Object.keys(beforePixels).sort().join(",");
+                const afterKeys = Object.keys(afterPixels).sort().join(",");
+                if (beforeKeys !== afterKeys || JSON.stringify(beforePixels) !== JSON.stringify(afterPixels)) {
+                    const action = createPixelChangeAction(
+                        actionObjectIdRef.current,
+                        beforePixels,
+                        afterPixels
+                    );
+                    onActionRef.current(action);
+                }
+            }
+
+            // Reset action tracking
+            actionBeforeStateRef.current = null;
+            actionObjectIdRef.current = null;
+
+            // Notify parent of pixel changes (for saving)
             if (onPixelsChangeRef.current) {
                 onPixelsChangeRef.current(pixels);
             }
@@ -207,13 +279,20 @@ export function PixelEditor({
     }, [selectedTool, createToolContext, content, setContent, markDirty]);
 
     return (
-        <PixelCanvas
-            ref={canvasRef}
-            content={content}
-            onPixelClick={handlePixelClick}
-            onPixelDrag={handlePixelDrag}
-            onMouseUp={handleMouseUp}
-            className={className}
-        />
+        <div className={cn("relative w-full h-full", className)}>
+            <PixelCanvas
+                ref={canvasRef}
+                content={content}
+                onPixelClick={handlePixelClick}
+                onPixelDrag={handlePixelDrag}
+                onMouseUp={handleMouseUp}
+                className="w-full h-full"
+            />
+            {/* Undo/Redo buttons in top-right */}
+            <div className="absolute top-4 right-4 flex flex-col gap-2 z-10">
+                <UndoButton onClick={onUndo ?? (() => {})} disabled={!canUndo} />
+                <RedoButton onClick={onRedo ?? (() => {})} disabled={!canRedo} />
+            </div>
+        </div>
     );
 }
