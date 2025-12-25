@@ -29,7 +29,8 @@ function convertToArboristData(objects: PixelObject[]): ArboristNode[] {
     id: obj.id,
     name: obj.name,
     data: obj,
-    children: obj.children.length > 0 ? convertToArboristData(obj.children) : undefined,
+    // Always include children array (even if empty) so react-arborist shows drop zones for leaf nodes
+    children: obj.children.length > 0 ? convertToArboristData(obj.children) : [],
   }));
 }
 
@@ -188,28 +189,28 @@ export function ObjectExplorer({
 
       return (
         <div
+          ref={dragHandle} // Make entire row draggable
           style={style}
           className={cn(
-            "flex items-center gap-1 py-1 px-2 hover:bg-accent cursor-pointer select-none group",
+            "flex items-center gap-1 py-1 pl-3 pr-2 hover:bg-accent cursor-grab active:cursor-grabbing select-none group",
             isSelected && "bg-accent"
           )}
           onClick={() => handleSelect([node])}
         >
-          {dragHandle && (
-            <div ref={dragHandle} className="flex-shrink-0 cursor-grab active:cursor-grabbing mr-1">
-              <svg width="12" height="12" viewBox="0 0 12 12" className="text-muted-foreground">
-                <circle cx="2" cy="2" r="1" fill="currentColor" />
-                <circle cx="6" cy="2" r="1" fill="currentColor" />
-                <circle cx="10" cy="2" r="1" fill="currentColor" />
-                <circle cx="2" cy="6" r="1" fill="currentColor" />
-                <circle cx="6" cy="6" r="1" fill="currentColor" />
-                <circle cx="10" cy="6" r="1" fill="currentColor" />
-                <circle cx="2" cy="10" r="1" fill="currentColor" />
-                <circle cx="6" cy="10" r="1" fill="currentColor" />
-                <circle cx="10" cy="10" r="1" fill="currentColor" />
-              </svg>
-            </div>
-          )}
+          {/* Drag handle icon (visual indicator only, whole row is draggable) */}
+          <div className="flex-shrink-0 mr-1 pointer-events-none">
+            <svg width="12" height="12" viewBox="0 0 12 12" className="text-muted-foreground">
+              <circle cx="2" cy="2" r="1" fill="currentColor" />
+              <circle cx="6" cy="2" r="1" fill="currentColor" />
+              <circle cx="10" cy="2" r="1" fill="currentColor" />
+              <circle cx="2" cy="6" r="1" fill="currentColor" />
+              <circle cx="6" cy="6" r="1" fill="currentColor" />
+              <circle cx="10" cy="6" r="1" fill="currentColor" />
+              <circle cx="2" cy="10" r="1" fill="currentColor" />
+              <circle cx="6" cy="10" r="1" fill="currentColor" />
+              <circle cx="10" cy="10" r="1" fill="currentColor" />
+            </svg>
+          </div>
 
           {/* Visibility toggle */}
           <Button
@@ -217,6 +218,7 @@ export function ObjectExplorer({
             size="icon"
             className="h-5 w-5 flex-shrink-0"
             onClick={(e) => handleVisibilityToggle(e, object.id)}
+            onMouseDown={(e) => e.stopPropagation()} // Prevent drag when clicking button
             title={object.visible ? "Hide object" : "Show object"}
           >
             {object.visible ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4 text-muted-foreground" />}
@@ -241,6 +243,7 @@ export function ObjectExplorer({
                   node.reset();
                 }
               }}
+              onMouseDown={(e) => e.stopPropagation()} // Prevent drag when clicking input
               autoFocus
               onClick={(e) => e.stopPropagation()}
             />
@@ -262,6 +265,7 @@ export function ObjectExplorer({
             size="icon"
             className="h-5 w-5 flex-shrink-0 opacity-0 group-hover:opacity-100"
             onClick={(e) => handleAdd(e, object.id)}
+            onMouseDown={(e) => e.stopPropagation()} // Prevent drag when clicking button
             title="Add child object"
           >
             <Plus className="h-3 w-3" />
@@ -273,6 +277,7 @@ export function ObjectExplorer({
             size="icon"
             className="h-5 w-5 flex-shrink-0 opacity-0 group-hover:opacity-100"
             onClick={(e) => handleDelete(e, object.id)}
+            onMouseDown={(e) => e.stopPropagation()} // Prevent drag when clicking button
             title="Delete object"
           >
             <Trash2 className="h-3 w-3" />
@@ -292,7 +297,8 @@ export function ObjectExplorer({
       if (containerRef.current) {
         const rect = containerRef.current.getBoundingClientRect();
         setTreeHeight(Math.max(200, rect.height - 50)); // Subtract header height
-        setTreeWidth(rect.width);
+        // Account for left padding (pl-2 = 0.5rem = 8px)
+        setTreeWidth(Math.max(0, rect.width - 8));
       }
     };
     updateSize();
@@ -315,7 +321,7 @@ export function ObjectExplorer({
           <Plus className="h-4 w-4" />
         </Button>
       </div>
-      <div ref={containerRef} className="flex-1 overflow-hidden min-h-0" style={{ minHeight: 200 }}>
+      <div ref={containerRef} className="flex-1 overflow-hidden min-h-0 pl-2" style={{ minHeight: 200 }}>
         {data.length === 0 ? (
           <div className="p-4 text-sm text-muted-foreground text-center">No objects. Click + to add one.</div>
         ) : (
@@ -329,6 +335,11 @@ export function ObjectExplorer({
             openByDefault={true}
             rowHeight={32}
             indent={20}
+            disableDrop={() => {
+              // Allow dropping into leaf nodes (nodes with no children)
+              // Only prevent dropping into own descendants (handled in handleMove)
+              return false;
+            }}
           >
             {Node}
           </Tree>
