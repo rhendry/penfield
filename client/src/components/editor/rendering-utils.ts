@@ -186,6 +186,7 @@ export function compositeImageData(
 
 /**
  * Render object's pixels to a single ImageData buffer
+ * Note: Visibility is checked in renderAssetContent, so this always renders
  */
 export function renderObjectPixels(
   object: PixelObject,
@@ -193,11 +194,7 @@ export function renderObjectPixels(
   halfSize: number
 ): ImageData {
   const imageData = new ImageData(maxSize, maxSize);
-  
-  if (object.visible) {
-    renderObjectPixelsToImageData(object, imageData, maxSize, halfSize);
-  }
-  
+  renderObjectPixelsToImageData(object, imageData, maxSize, halfSize);
   return imageData;
 }
 

@@ -61,9 +61,9 @@ function processBuffer() {
         lastErasedPoint = p;
     }
     
-    // Apply delta to canvas
+    // Apply delta to active object
     if (Object.keys(delta).length > 0) {
-        context.applyPixels(delta);
+        context.applyPixelsToObject(delta);
     }
     
     // Continue processing if more input arrived
@@ -109,7 +109,7 @@ export const eraserTool: PixelTool = {
         // Erase initial pixel
         if (x >= -context.halfSize && x < context.halfSize && 
             y >= -context.halfSize && y < context.halfSize) {
-            context.applyPixels({ [`${x},${y}`]: null });
+            context.applyPixelsToObject({ [`${x},${y}`]: null });
         }
     },
     

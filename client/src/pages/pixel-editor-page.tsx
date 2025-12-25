@@ -20,10 +20,27 @@ import { ColorPicker } from "@/components/utilities/color-picker";
 import { ColorPalette } from "@/components/utilities/color-palette";
 import { Palette } from "@/components/utilities/palette-selector";
 import { ReactNode } from "react";
-import { RenderContextProvider } from "@/components/editor/render-context";
+import { RenderContextProvider, useRenderContext } from "@/components/editor/render-context";
 import { migrateLegacyContent } from "@shared/utils/pixel-asset";
 import { getTool } from "@/tools";
 import type { PixelAssetContent } from "@shared/types/pixel-asset";
+
+// SaveButton component that accesses RenderContext
+function SaveButton({ onSave, isPending }: { onSave: (content: PixelAssetContent) => Promise<void>; isPending: boolean }) {
+    const { content } = useRenderContext();
+
+    const handleClick = useCallback(async () => {
+        await onSave(content);
+    }, [content, onSave]);
+
+    return (
+        <Button onClick={handleClick} disabled={isPending}>
+            {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            <Save className="mr-2 h-4 w-4" />
+            Save
+        </Button>
+    );
+}
 
 function PixelEditorContent() {
     const [, params] = useRoute("/assets/:id/edit");
@@ -50,7 +67,6 @@ function PixelEditorContent() {
     const [leftClickColor, setLeftClickColor] = useState("#000000ff");
     const [rightClickColor, setRightClickColor] = useState("#ffffff00");
     const [currentPaletteId, setCurrentPaletteId] = useState<string>("");
-    const [pixels, setPixels] = useState<Record<string, string>>({});
     const [utilitiesPanelExpanded, setUtilitiesPanelExpanded] = useState(false);
     const [utilitiesPanelWidth, setUtilitiesPanelWidth] = useState(320);
 
@@ -130,15 +146,7 @@ function PixelEditorContent() {
         }
     }, [palettes, currentPaletteId]);
 
-    // Initialize pixels from asset content
-    useEffect(() => {
-        if (asset?.content && typeof asset.content === "object" && "grid" in asset.content) {
-            const grid = (asset.content as { grid?: Record<string, string> }).grid;
-            if (grid) {
-                setPixels(grid);
-            }
-        }
-    }, [asset]);
+    // Removed pixels state - now using content from RenderContext
 
     // Handle toolbelt slot click
     const handleToolbeltSlotClick = useCallback((slotId: string) => {
@@ -324,10 +332,7 @@ function PixelEditorContent() {
         return asset.content as PixelAssetContent;
     }, [asset]);
 
-    // Handle pixels change (legacy support)
-    const handlePixelsChange = useCallback((newPixels: Record<string, string>) => {
-        setPixels(newPixels);
-    }, []);
+    // Removed handlePixelsChange - no longer needed
 
     // Save asset
     const saveAssetMutation = useMutation({
@@ -351,11 +356,10 @@ function PixelEditorContent() {
         },
     });
 
-    const handleSave = useCallback(async () => {
-        // For now, save legacy format for backward compatibility
-        // TODO: Update to save full PixelAssetContent when server supports it
-        await saveAssetMutation.mutateAsync({ grid: pixels });
-    }, [pixels, saveAssetMutation]);
+    // Save handler - receives content from SaveButton component
+    const handleSave = useCallback(async (content: PixelAssetContent) => {
+        await saveAssetMutation.mutateAsync(content);
+    }, [saveAssetMutation]);
 
     // Handle utilities panel toggle (Ctrl+Space / Cmd+Space) - global hotkey
     useEffect(() => {
@@ -420,34 +424,29 @@ function PixelEditorContent() {
 
     return (
         <div className="min-h-screen bg-background flex flex-col relative">
-            <header className="border-b p-4 flex items-center gap-4 z-50">
-                <Link href={`/projects/${asset.projectId}`}>
-                    <Button variant="ghost" size="icon">
-                        <ArrowLeft className="h-4 w-4" />
-                    </Button>
-                </Link>
-                <div className="flex-1">
-                    <h1 className="text-xl font-bold">{asset.name}</h1>
-                    <p className="text-xs text-muted-foreground">{asset.type} editor</p>
-                </div>
-                <Button onClick={handleSave} disabled={saveAssetMutation.isPending}>
-                    {saveAssetMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    <Save className="mr-2 h-4 w-4" />
-                    Save
-                </Button>
-            </header>
+            {initialContent && (
+                <RenderContextProvider initialContent={initialContent}>
+                    <header className="border-b p-4 flex items-center gap-4 z-50">
+                        <Link href={`/projects/${asset.projectId}`}>
+                            <Button variant="ghost" size="icon">
+                                <ArrowLeft className="h-4 w-4" />
+                            </Button>
+                        </Link>
+                        <div className="flex-1">
+                            <h1 className="text-xl font-bold">{asset.name}</h1>
+                            <p className="text-xs text-muted-foreground">{asset.type} editor</p>
+                        </div>
+                        <SaveButton onSave={handleSave} isPending={saveAssetMutation.isPending} />
+                    </header>
 
-            <main className="flex-1 relative overflow-hidden">
-                {/* Pixel Canvas - fills entire space */}
-                {initialContent && (
-                    <RenderContextProvider initialContent={initialContent}>
+                    <main className="flex-1 relative overflow-hidden">
+                        {/* Pixel Canvas - fills entire space */}
                         <div className="absolute inset-0">
                             <PixelEditor
                                 initialContent={asset.content}
                                 selectedTool={selectedTool}
                                 leftClickColor={leftClickColor}
                                 rightClickColor={rightClickColor}
-                                onPixelsChange={handlePixelsChange}
                             />
                         </div>
 
@@ -459,48 +458,48 @@ function PixelEditorContent() {
                             width={utilitiesPanelWidth}
                             onWidthChange={setUtilitiesPanelWidth}
                         />
-                    </RenderContextProvider>
-                )}
 
-                {/* Toolbelt - bottom left */}
-                <Toolbelt
-                    slots={toolbeltSlots}
-                    onSlotClick={handleToolbeltSlotClick}
-                    selectedToolId={selectedTool?.id}
-                />
+                        {/* Toolbelt - bottom left */}
+                        <Toolbelt
+                            slots={toolbeltSlots}
+                            onSlotClick={handleToolbeltSlotClick}
+                            selectedToolId={selectedTool?.id}
+                        />
 
-                {/* Quick Select - to right of toolbelt */}
-                <QuickSelect
-                    slots={quickSelectSlots}
-                    onSelect={handleQuickSelectClick}
-                    onRemove={removeQuickSelectSlot}
-                />
+                        {/* Quick Select - to right of toolbelt */}
+                        <QuickSelect
+                            slots={quickSelectSlots}
+                            onSelect={handleQuickSelectClick}
+                            onRemove={removeQuickSelectSlot}
+                        />
 
-                {/* Toolkit Explorer - modal */}
-                <ToolkitExplorer
-                    isOpen={isExplorerOpen}
-                    onClose={() => setIsExplorerOpen(false)}
-                    onSelectTool={handleToolSelect}
-                    onSelectToolbelt={handleToolbeltSelect}
-                    onAction={() => { }}
-                    tools={availableTools.map((t) => ({
-                        id: String(t.id),
-                        name: t.name,
-                        description: t.description,
-                        iconType: t.iconType,
-                        iconName: t.iconName,
-                        badgeType: t.badgeType,
-                        badgeName: t.badgeName,
-                        badgeAlignment: t.badgeAlignment,
-                    }))}
-                    toolbelts={availableToolbelts.map((tb) => ({
-                        id: String(tb.id),
-                        name: tb.name,
-                        description: tb.description,
-                        hotkey: tb.hotkey,
-                    }))}
-                />
-            </main>
+                        {/* Toolkit Explorer - modal */}
+                        <ToolkitExplorer
+                            isOpen={isExplorerOpen}
+                            onClose={() => setIsExplorerOpen(false)}
+                            onSelectTool={handleToolSelect}
+                            onSelectToolbelt={handleToolbeltSelect}
+                            onAction={() => { }}
+                            tools={availableTools.map((t) => ({
+                                id: String(t.id),
+                                name: t.name,
+                                description: t.description,
+                                iconType: t.iconType,
+                                iconName: t.iconName,
+                                badgeType: t.badgeType,
+                                badgeName: t.badgeName,
+                                badgeAlignment: t.badgeAlignment,
+                            }))}
+                            toolbelts={availableToolbelts.map((tb) => ({
+                                id: String(tb.id),
+                                name: tb.name,
+                                description: tb.description,
+                                hotkey: tb.hotkey,
+                            }))}
+                        />
+                    </main>
+                </RenderContextProvider>
+            )}
         </div>
     );
 }

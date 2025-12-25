@@ -66,9 +66,9 @@ function processBuffer() {
         lastDrawnPoint = p;
     }
 
-    // Apply delta to canvas
+    // Apply delta to active object
     if (Object.keys(delta).length > 0) {
-        context.applyPixels(delta);
+        context.applyPixelsToObject(delta);
     }
 
     // Continue processing if more input arrived
@@ -118,7 +118,7 @@ export const penTool: PixelTool = {
         const color = button === "left" ? context.leftClickColor : context.rightClickColor;
         if (x >= -context.halfSize && x < context.halfSize &&
             y >= -context.halfSize && y < context.halfSize) {
-            context.applyPixels({ [`${x},${y}`]: color });
+            context.applyPixelsToObject({ [`${x},${y}`]: color });
         }
     },
 

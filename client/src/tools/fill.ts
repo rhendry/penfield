@@ -113,7 +113,7 @@ export const fillTool: PixelTool = {
         const delta = floodFill(context, x, y, color);
 
         if (Object.keys(delta).length > 0) {
-            context.applyPixels(delta);
+            context.applyPixelsToObject(delta);
         }
     },
 

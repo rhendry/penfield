@@ -120,6 +120,3 @@ export const pixelAssetContentSchema = z.object({
   activeObjectId: z.string().nullable(),
 });
 
-// Export schema for API validation
-export { pixelAssetContentSchema as pixelAssetContentSchema };
-

@@ -25,18 +25,13 @@ export interface ToolContext {
     /**
      * Get full pixel data as ImageData (for bulk reads like flood fill)
      * Returns the full canvas ImageData - use for algorithms that need to read many pixels
+     * This reads from the rendered composite of all visible objects
      */
     getPixelData: () => ImageData | null;
     
     /**
-     * Apply pixel changes (delta only - not full state)
-     * Pass color string to set, null to clear
-     */
-    applyPixels: (delta: PixelDelta) => void;
-    
-    /**
      * Request a render on next animation frame
-     * Use this when batching multiple applyPixels calls
+     * Use this when batching multiple applyPixelsToObject calls
      */
     requestRender: () => void;
     

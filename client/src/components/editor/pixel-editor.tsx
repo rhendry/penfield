@@ -54,17 +54,8 @@ export function PixelEditor({
         }
     }, [initialContent, setContent]);
 
-    // Load pixels from active object when content changes
-    useEffect(() => {
-        if (canvasRef.current) {
-            const activeObject = getActiveObject(content);
-            if (activeObject) {
-                canvasRef.current.loadPixels(activeObject.pixels);
-            } else {
-                canvasRef.current.clear();
-            }
-        }
-    }, [content.activeObjectId, content.objects]);
+    // Canvas rendering is now handled by renderAssetContent in PixelCanvas
+    // No need to manually load pixels - the canvas renders from content automatically
 
     // Create tool context - provides canvas access methods
     const createToolContext = useCallback((): ToolContext => {
@@ -80,10 +71,6 @@ export function PixelEditor({
 
             getPixelData: () => {
                 return canvasRef.current?.getPixelData() ?? null;
-            },
-
-            applyPixels: (delta) => {
-                canvasRef.current?.applyPixels(delta);
             },
 
             requestRender: () => {
