@@ -134,6 +134,9 @@ function PixelEditorContent() {
     // Check if object explorer feature is enabled
     const objectExplorerEnabled = useFeatureFlag("object-explorer");
 
+    // Check if toolkit explorer feature is enabled
+    const toolkitExplorerEnabled = useFeatureFlag("toolkit-explorer");
+
     // Initialize default toolbelt on mount and when feature flag changes
     const [hasInitialized, setHasInitialized] = useState(false);
     useEffect(() => {
@@ -418,7 +421,7 @@ function PixelEditorContent() {
     }, [setIsExplorerOpen]);
 
     useToolkitExplorer({
-        enabled: true,
+        enabled: toolkitExplorerEnabled,
         onToggle: toggleExplorer,
     });
 
@@ -477,6 +480,7 @@ function PixelEditorContent() {
                         utilitiesPanelExpanded={utilitiesPanelExpanded}
                         utilitiesPanelWidth={utilitiesPanelWidth}
                         objectExplorerEnabled={objectExplorerEnabled}
+                        toolkitExplorerEnabled={toolkitExplorerEnabled}
                         setSelectedTool={setSelectedTool}
                         setLeftClickColor={setLeftClickColor}
                         setRightClickColor={setRightClickColor}
@@ -518,6 +522,7 @@ function PixelEditorWithUndoRedo({
     utilitiesPanelExpanded,
     utilitiesPanelWidth,
     objectExplorerEnabled,
+    toolkitExplorerEnabled,
     setSelectedTool,
     setLeftClickColor,
     setRightClickColor,
@@ -551,6 +556,7 @@ function PixelEditorWithUndoRedo({
     utilitiesPanelExpanded: boolean;
     utilitiesPanelWidth: number;
     objectExplorerEnabled: boolean;
+    toolkitExplorerEnabled: boolean;
     setSelectedTool: (tool: Tool | null) => void;
     setLeftClickColor: (color: string) => void;
     setRightClickColor: (color: string) => void;
@@ -571,6 +577,16 @@ function PixelEditorWithUndoRedo({
 }) {
     const { content, setContent } = useRenderContext();
     const { undo, redo, pushAction, canUndo, canRedo } = useUndoRedo(id, content, setContent);
+
+    // Toolkit explorer toggle - only enabled if feature flag is on
+    const toggleExplorer = useCallback(() => {
+        setIsExplorerOpen(!isExplorerOpen);
+    }, [setIsExplorerOpen, isExplorerOpen]);
+
+    useToolkitExplorer({
+        enabled: toolkitExplorerEnabled,
+        onToggle: toggleExplorer,
+    });
 
     // Handle undo/redo keyboard shortcuts (Ctrl+Z / Ctrl+Y)
     useEffect(() => {
@@ -662,29 +678,31 @@ function PixelEditorWithUndoRedo({
                 />
 
                 {/* Toolkit Explorer - modal */}
-                <ToolkitExplorer
-                    isOpen={isExplorerOpen}
-                    onClose={() => setIsExplorerOpen(false)}
-                    onSelectTool={handleToolSelect}
-                    onSelectToolbelt={handleToolbeltSelect}
-                    onAction={() => { }}
-                    tools={availableTools.map((t) => ({
-                        id: String(t.id),
-                        name: t.name,
-                        description: t.description,
-                        iconType: t.iconType,
-                        iconName: t.iconName,
-                        badgeType: t.badgeType,
-                        badgeName: t.badgeName,
-                        badgeAlignment: t.badgeAlignment,
-                    }))}
-                    toolbelts={availableToolbelts.map((tb) => ({
-                        id: String(tb.id),
-                        name: tb.name,
-                        description: tb.description,
-                        hotkey: tb.hotkey,
-                    }))}
-                />
+                {toolkitExplorerEnabled && (
+                    <ToolkitExplorer
+                        isOpen={isExplorerOpen}
+                        onClose={() => setIsExplorerOpen(false)}
+                        onSelectTool={handleToolSelect}
+                        onSelectToolbelt={handleToolbeltSelect}
+                        onAction={() => { }}
+                        tools={availableTools.map((t) => ({
+                            id: String(t.id),
+                            name: t.name,
+                            description: t.description,
+                            iconType: t.iconType,
+                            iconName: t.iconName,
+                            badgeType: t.badgeType,
+                            badgeName: t.badgeName,
+                            badgeAlignment: t.badgeAlignment,
+                        }))}
+                        toolbelts={availableToolbelts.map((tb) => ({
+                            id: String(tb.id),
+                            name: tb.name,
+                            description: tb.description,
+                            hotkey: tb.hotkey,
+                        }))}
+                    />
+                )}
             </main>
         </>
     );

@@ -8,6 +8,11 @@ async function seedFeatureFlags() {
             enabled: "false",
             description: "Enable the object explorer tool for managing pixel art objects and layers",
         },
+        {
+            name: "toolkit-explorer",
+            enabled: "false",
+            description: "Enable the toolkit explorer modal (press Space to open) for browsing and selecting tools and toolbelts",
+        },
     ];
 
     for (const flag of flags) {
