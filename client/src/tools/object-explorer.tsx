@@ -2,7 +2,7 @@ import { PixelTool } from "./types";
 import { ObjectExplorer } from "@/components/editor/object-explorer";
 import { ObjectPropertiesPanel } from "@/components/editor/object-properties-panel";
 import { useRenderContext } from "@/components/editor/render-context";
-import { useState, Fragment, useMemo } from "react";
+import { useState, Fragment, useMemo, useCallback } from "react";
 import { getObjectById } from "@shared/utils/pixel-asset";
 import type { ColorAdjustments, PixelObject } from "@shared/types/pixel-asset";
 
@@ -34,16 +34,30 @@ export const objectExplorerTool: PixelTool = {
 
 function ObjectExplorerToolUtilities() {
   const { content, setContent, markDirty } = useRenderContext();
-  const [selectedObjectId, setSelectedObjectId] = useState<string | null>(content.activeObjectId);
+  // Sync selectedObjectId with activeObjectId from content
+  const selectedObjectId = content.activeObjectId;
 
   const selectedObject = useMemo(() => {
     return selectedObjectId ? getObjectById(content, selectedObjectId) : null;
   }, [content, selectedObjectId]);
 
-  const handleContentChange = (newContent: typeof content) => {
+  const handleContentChange = useCallback((newContent: typeof content | ((prev: typeof content) => typeof content)) => {
+    if (typeof newContent === 'function') {
+      setContent(newContent);
+    } else {
     setContent(newContent);
+    }
     markDirty();
-  };
+  }, [setContent, markDirty]);
+
+  // Handle object selection - also sets it as the active object for drawing
+  const handleObjectSelect = useCallback((objectId: string | null) => {
+    setContent((prevContent) => ({
+      ...prevContent,
+      activeObjectId: objectId,
+    }));
+    markDirty();
+  }, [setContent, markDirty]);
 
   const handleColorAdjustmentsChange = (adjustments: ColorAdjustments) => {
     if (!selectedObject) return;
@@ -70,7 +84,7 @@ function ObjectExplorerToolUtilities() {
         content={content}
         selectedObjectId={selectedObjectId}
         onContentChange={handleContentChange}
-        onObjectSelect={setSelectedObjectId}
+        onObjectSelect={handleObjectSelect}
       />
       <ObjectPropertiesPanel
         selectedObject={selectedObject}

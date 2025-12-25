@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback } from "react";
+import React, { useMemo, useCallback, useState } from "react";
 import { Tree, NodeApi } from "react-arborist";
 import { Eye, EyeOff, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { moveObject } from "@shared/utils/object-reorder";
 export interface ObjectExplorerProps {
   content: PixelAssetContent;
   selectedObjectId: string | null;
-  onContentChange: (content: PixelAssetContent) => void;
+  onContentChange: (content: PixelAssetContent | ((prev: PixelAssetContent) => PixelAssetContent)) => void;
   onObjectSelect?: (objectId: string | null) => void;
   className?: string;
 }
@@ -42,6 +42,9 @@ export function ObjectExplorer({
   onObjectSelect,
   className,
 }: ObjectExplorerProps) {
+  // Track which node is being edited
+  const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
+
   // Convert objects to arborist format, sorted by order (higher order = top)
   const data = useMemo(() => {
     const sorted = [...content.objects].sort((a, b) => b.order - a.order);
@@ -86,22 +89,25 @@ export function ObjectExplorer({
   // Handle rename
   const handleRename = useCallback(
     ({ id, name }: { id: string; name: string }) => {
-      const updateObject = (obj: PixelObject): PixelObject => {
-        if (obj.id === id) {
-          return { ...obj, name };
-        }
-        return {
-          ...obj,
-          children: obj.children.map(updateObject),
+      // Use functional update to ensure we have latest content
+      onContentChange((prevContent) => {
+        const updateObject = (obj: PixelObject): PixelObject => {
+          if (obj.id === id) {
+            return { ...obj, name };
+          }
+          return {
+            ...obj,
+            children: obj.children.map(updateObject),
+          };
         };
-      };
 
-      onContentChange({
-        ...content,
-        objects: content.objects.map(updateObject),
+        return {
+          ...prevContent,
+          objects: prevContent.objects.map(updateObject),
+        };
       });
     },
-    [content, onContentChange]
+    [onContentChange]
   );
 
   // Handle visibility toggle
@@ -139,21 +145,31 @@ export function ObjectExplorer({
           }
           return { ...obj, children: obj.children.map(addToParent) };
         };
-        onContentChange({
+        const updatedContent = {
           ...content,
           objects: content.objects.map(addToParent),
-        });
+          // Set new object as active so user can immediately draw to it
+          activeObjectId: newObject.id,
+        };
+        onContentChange(updatedContent);
+        // Also select it (after content is updated)
+        onObjectSelect?.(newObject.id);
       } else {
         // Add to root
         const maxOrder = content.objects.length > 0 ? Math.max(...content.objects.map((o) => o.order)) : -1;
         const newObjectWithOrder = { ...newObject, order: maxOrder + 1 };
-        onContentChange({
+        const updatedContent = {
           ...content,
           objects: [...content.objects, newObjectWithOrder],
-        });
+          // Set new object as active so user can immediately draw to it
+          activeObjectId: newObject.id,
+        };
+        onContentChange(updatedContent);
+        // Also select it (after content is updated)
+        onObjectSelect?.(newObject.id);
       }
     },
-    [content, onContentChange]
+    [content, onContentChange, onObjectSelect]
   );
 
   // Handle delete object
@@ -185,7 +201,8 @@ export function ObjectExplorer({
     ({ node, style, dragHandle }: { node: NodeApi<ArboristNode>; style: React.CSSProperties; dragHandle?: (el: HTMLDivElement | null) => void }) => {
       const object = node.data.data;
       const isSelected = node.id === selectedObjectId;
-      const isEditing = node.isEditing;
+      const isActive = node.id === content.activeObjectId;
+      const isEditing = editingNodeId === node.id || node.isEditing;
 
       return (
         <div
@@ -193,9 +210,15 @@ export function ObjectExplorer({
           style={style}
           className={cn(
             "flex items-center gap-1 py-1 pl-3 pr-2 hover:bg-accent cursor-grab active:cursor-grabbing select-none group",
-            isSelected && "bg-accent"
+            isSelected && "bg-accent",
+            isActive && "ring-2 ring-primary ring-offset-1"
           )}
-          onClick={() => handleSelect([node])}
+          onClick={(e) => {
+            // Don't select if double-clicking (will trigger edit instead)
+            if (e.detail === 1) {
+              handleSelect([node]);
+            }
+          }}
         >
           {/* Drag handle icon (visual indicator only, whole row is draggable) */}
           <div className="flex-shrink-0 mr-1 pointer-events-none">
@@ -234,7 +257,8 @@ export function ObjectExplorer({
                 if (newName && newName !== node.data.name) {
                   handleRename({ id: node.id, name: newName });
                 }
-                node.reset();
+                setEditingNodeId(null);
+                if (node.reset) node.reset();
               }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
@@ -245,17 +269,23 @@ export function ObjectExplorer({
                     handleRename({ id: node.id, name: newName });
                   }
                   e.currentTarget.blur();
+                  setEditingNodeId(null);
                   // Use setTimeout to ensure blur completes before reset
-                  setTimeout(() => {
-                    node.reset();
-                  }, 0);
+                  if (node.reset) {
+                    setTimeout(() => {
+                      node.reset();
+                    }, 0);
+                  }
                 } else if (e.key === "Escape") {
                   e.preventDefault();
                   e.stopPropagation();
                   e.currentTarget.blur();
-                  setTimeout(() => {
-                    node.reset();
-                  }, 0);
+                  setEditingNodeId(null);
+                  if (node.reset) {
+                    setTimeout(() => {
+                      node.reset();
+                    }, 0);
+                  }
                 }
               }}
               onMouseDown={(e) => e.stopPropagation()} // Prevent drag when clicking input
@@ -266,8 +296,14 @@ export function ObjectExplorer({
             <span
               className="flex-1 text-sm overflow-hidden text-ellipsis whitespace-nowrap"
               onDoubleClick={(e) => {
+                e.preventDefault();
                 e.stopPropagation();
-                node.edit();
+                // Set this node as editing
+                setEditingNodeId(node.id);
+                // Also try calling node.edit() if available
+                if (node.edit) {
+                  node.edit();
+                }
               }}
             >
               {node.data.name}
@@ -300,7 +336,7 @@ export function ObjectExplorer({
         </div>
       );
     },
-    [selectedObjectId, handleSelect, handleVisibilityToggle, handleAdd, handleDelete]
+    [selectedObjectId, content.activeObjectId, editingNodeId, handleSelect, handleVisibilityToggle, handleAdd, handleDelete, handleRename]
   );
 
   const containerRef = React.useRef<HTMLDivElement>(null);

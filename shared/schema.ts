@@ -111,6 +111,15 @@ export const colorPalettes = pgTable("color_palettes", {
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const featureFlags = pgTable("feature_flags", {
+    id: serial("id").primaryKey(),
+    name: text("name").notNull().unique(),
+    enabled: text("enabled", { enum: ["true", "false"] }).notNull().default("false"),
+    description: text("description"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Zod schemas
 export const insertToolkitSchema = createInsertSchema(toolkits).pick({
     name: true,
@@ -148,6 +157,17 @@ export const insertColorPaletteSchema = createInsertSchema(colorPalettes).pick({
     colors: true,
 });
 
+export const insertFeatureFlagSchema = createInsertSchema(featureFlags).pick({
+    name: true,
+    enabled: true,
+    description: true,
+});
+
+export const updateFeatureFlagSchema = z.object({
+    enabled: z.enum(["true", "false"]),
+    description: z.string().optional(),
+});
+
 // TypeScript types
 export type Toolkit = typeof toolkits.$inferSelect;
 export type InsertToolkit = z.infer<typeof insertToolkitSchema>;
@@ -163,3 +183,7 @@ export type InsertQuickSelectSlot = z.infer<typeof insertQuickSelectSlotSchema>;
 
 export type ColorPalette = typeof colorPalettes.$inferSelect;
 export type InsertColorPalette = z.infer<typeof insertColorPaletteSchema>;
+
+export type FeatureFlag = typeof featureFlags.$inferSelect;
+export type InsertFeatureFlag = z.infer<typeof insertFeatureFlagSchema>;
+export type UpdateFeatureFlag = z.infer<typeof updateFeatureFlagSchema>;

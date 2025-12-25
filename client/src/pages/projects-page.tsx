@@ -24,7 +24,7 @@ import { ModeToggle } from "@/components/mode-toggle";
 import { ChangePasswordDialog } from "@/components/change-password-dialog";
 
 export default function ProjectsPage() {
-    const { logoutMutation } = useAuth();
+    const { logoutMutation, user } = useAuth();
     const { toast } = useToast();
     const [open, setOpen] = useState(false);
 
@@ -78,6 +78,11 @@ export default function ProjectsPage() {
                     <div className="flex gap-4 items-center">
                         <ModeToggle />
                         <ChangePasswordDialog />
+                        {user?.role === "admin" && (
+                            <Link href="/admin">
+                                <Button variant="secondary">Admin Panel</Button>
+                            </Link>
+                        )}
                         <Button variant="destructive" onClick={() => logoutMutation.mutate()}>
                             Logout
                         </Button>

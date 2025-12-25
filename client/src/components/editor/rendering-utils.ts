@@ -194,7 +194,7 @@ export function renderObjectPixels(
   halfSize: number
 ): ImageData {
   const imageData = new ImageData(maxSize, maxSize);
-  renderObjectPixelsToImageData(object, imageData, maxSize, halfSize);
+    renderObjectPixelsToImageData(object, imageData, maxSize, halfSize);
   return imageData;
 }
 

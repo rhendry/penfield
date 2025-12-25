@@ -24,13 +24,16 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { insertUserSchema } from "@shared/schema";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { Link } from "wouter";
 import { z } from "zod";
+import { useFeatureFlags } from "@/hooks/use-feature-flags";
+import { Switch } from "@/components/ui/switch";
+import { Loader2 } from "lucide-react";
 
 export default function AdminDashboard() {
     const { user } = useAuth();
@@ -169,7 +172,87 @@ export default function AdminDashboard() {
                         </Form>
                     </CardContent>
                 </Card>
+
+                <FeatureFlagsCard />
             </div>
         </div>
+    );
+}
+
+function FeatureFlagsCard() {
+    const { toast } = useToast();
+    const { data: flags, isLoading } = useFeatureFlags();
+
+    const updateFlagMutation = useMutation({
+        mutationFn: async ({ name, enabled }: { name: string; enabled: boolean }) => {
+            const res = await apiRequest("PUT", `/api/admin/feature-flags/${name}`, {
+                enabled: enabled ? "true" : "false",
+            });
+            return await res.json();
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["/api/admin/feature-flags"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/feature-flags"] });
+            toast({
+                title: "Success",
+                description: "Feature flag updated",
+            });
+        },
+        onError: (error: Error) => {
+            toast({
+                title: "Error",
+                description: error.message,
+                variant: "destructive",
+            });
+        },
+    });
+
+    const handleToggle = (name: string, currentEnabled: boolean) => {
+        updateFlagMutation.mutate({ name, enabled: !currentEnabled });
+    };
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Feature Flags</CardTitle>
+                <CardDescription>
+                    Enable or disable features for all users.
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                {isLoading ? (
+                    <div className="flex items-center justify-center p-8">
+                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    </div>
+                ) : flags && flags.length > 0 ? (
+                    <div className="space-y-4">
+                        {flags.map((flag) => (
+                            <div
+                                key={flag.name}
+                                className="flex items-center justify-between p-4 border rounded-lg"
+                            >
+                                <div className="flex-1">
+                                    <div className="font-medium">{flag.name}</div>
+                                    {flag.description && (
+                                        <div className="text-sm text-muted-foreground mt-1">
+                                            {flag.description}
+                                        </div>
+                                    )}
+                                </div>
+                                <Switch
+                                    checked={flag.enabled}
+                                    onCheckedChange={() => handleToggle(flag.name, flag.enabled)}
+                                    disabled={updateFlagMutation.isPending}
+                                />
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="text-sm text-muted-foreground p-4">
+                        No feature flags configured. Create them via the API or database.
+                    </div>
+                )}
+            </CardContent>
+        </Card>
     );
 }

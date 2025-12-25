@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { hashPassword, comparePasswords } from "./auth";
-import { insertUserSchema, insertProjectSchema, insertAssetSchema } from "@shared/schema";
+import { insertUserSchema, insertProjectSchema, insertAssetSchema, insertFeatureFlagSchema, updateFeatureFlagSchema } from "@shared/schema";
 import { registerToolkitRoutes } from "./toolkit-routes";
 import { registerPaletteRoutes } from "./palette-routes";
 
@@ -103,6 +103,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
 
         res.status(201).json(user);
+    });
+
+    // Feature Flags (Admin only)
+    app.get("/api/admin/feature-flags", async (req, res) => {
+        if (!req.isAuthenticated() || (req.user as any).role !== "admin") {
+            return res.status(403).json({ message: "Forbidden" });
+        }
+        const flags = await storage.getFeatureFlags_async();
+        res.json(flags);
+    });
+
+    app.get("/api/feature-flags/:name", async (req, res) => {
+        // Public endpoint - anyone can check if a feature is enabled
+        const flag = await storage.getFeatureFlag_async(req.params.name);
+        if (!flag) {
+            return res.json({ name: req.params.name, enabled: false });
+        }
+        res.json({ name: flag.name, enabled: flag.enabled === "true" });
+    });
+
+    app.put("/api/admin/feature-flags/:name", async (req, res) => {
+        if (!req.isAuthenticated() || (req.user as any).role !== "admin") {
+            return res.status(403).json({ message: "Forbidden" });
+        }
+
+        const parsed = updateFeatureFlagSchema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(400).json(parsed.error);
+        }
+
+        try {
+            const flag = await storage.updateFeatureFlag_async(req.params.name, parsed.data);
+            res.json(flag);
+        } catch (error: any) {
+            if (error.message.includes("not found")) {
+                return res.status(404).json({ message: error.message });
+            }
+            return res.status(500).json({ message: error.message });
+        }
+    });
+
+    app.post("/api/admin/feature-flags", async (req, res) => {
+        if (!req.isAuthenticated() || (req.user as any).role !== "admin") {
+            return res.status(403).json({ message: "Forbidden" });
+        }
+
+        const parsed = insertFeatureFlagSchema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(400).json(parsed.error);
+        }
+
+        const existing = await storage.getFeatureFlag_async(parsed.data.name);
+        if (existing) {
+            return res.status(400).json({ message: "Feature flag already exists" });
+        }
+
+        const flag = await storage.createFeatureFlag_async(parsed.data);
+        res.status(201).json(flag);
     });
 
     // Projects

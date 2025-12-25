@@ -29,6 +29,13 @@
       "when": 1766115418549,
       "tag": "0003_damp_daredevil",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1766626077178,
+      "tag": "0004_bitter_celestials",
+      "breakpoints": true
     }
   ]
 }

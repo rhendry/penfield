@@ -199,7 +199,7 @@ export function PixelEditor({
             setContent(newContent);
             markDirty();
 
-            // Notify parent of pixel changes (for saving)
+        // Notify parent of pixel changes (for saving)
             if (onPixelsChangeRef.current) {
                 onPixelsChangeRef.current(pixels);
             }

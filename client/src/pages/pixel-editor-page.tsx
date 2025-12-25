@@ -24,6 +24,7 @@ import { RenderContextProvider, useRenderContext } from "@/components/editor/ren
 import { migrateLegacyContent } from "@shared/utils/pixel-asset";
 import { getTool } from "@/tools";
 import type { PixelAssetContent } from "@shared/types/pixel-asset";
+import { useFeatureFlag } from "@/hooks/use-feature-flags";
 
 // SaveButton component that accesses RenderContext
 function SaveButton({ onSave, isPending }: { onSave: (content: PixelAssetContent) => Promise<void>; isPending: boolean }) {
@@ -129,15 +130,22 @@ function PixelEditorContent() {
         loadData();
     }, []);
 
+    // Check if object explorer feature is enabled
+    const objectExplorerEnabled = useFeatureFlag("object-explorer");
+
     // Initialize default toolbelt on mount (only once)
     const [hasInitialized, setHasInitialized] = useState(false);
     useEffect(() => {
         if (!hasInitialized && toolbeltSlots.length === 0) {
-            setToolbeltSlots(DEFAULT_PIXEL_TOOLBELT);
+            // Filter out object explorer if feature flag is disabled
+            const defaultToolbelt = objectExplorerEnabled
+                ? DEFAULT_PIXEL_TOOLBELT
+                : DEFAULT_PIXEL_TOOLBELT.filter((slot) => slot.tool?.id !== "object-explorer");
+            setToolbeltSlots(defaultToolbelt);
             setSelectedTool(PEN_TOOL);
             setHasInitialized(true);
         }
-    }, [hasInitialized, toolbeltSlots.length, setToolbeltSlots]);
+    }, [hasInitialized, toolbeltSlots.length, setToolbeltSlots, objectExplorerEnabled]);
 
     // Set initial palette
     useEffect(() => {
@@ -198,6 +206,10 @@ function PixelEditorContent() {
 
         // Get utilities from PixelTool registry for tools that have them
         if (toolId === "object-explorer") {
+            // Only show object explorer if feature flag is enabled
+            if (!objectExplorerEnabled) {
+                return undefined;
+            }
             const pixelTool = getTool(toolId);
             return pixelTool?.utilities;
         }
@@ -310,7 +322,7 @@ function PixelEditorContent() {
         }
 
         return undefined;
-    }, [selectedTool, leftClickColor, rightClickColor, currentPaletteId, palettes, currentPaletteColors]);
+    }, [selectedTool, leftClickColor, rightClickColor, currentPaletteId, palettes, currentPaletteColors, objectExplorerEnabled]);
 
     // Update selected tool utilities
     const selectedToolWithUtilities = useMemo<Tool | null>(() => {

@@ -23,6 +23,10 @@ import {
     colorPalettes,
     type ColorPalette,
     type InsertColorPalette,
+    featureFlags,
+    type FeatureFlag,
+    type InsertFeatureFlag,
+    type UpdateFeatureFlag,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc } from "drizzle-orm";
@@ -79,6 +83,13 @@ export interface IStorage {
     deletePalette_async(id: number): Promise<void>;
     addPaletteColor_async(id: number, color: string): Promise<ColorPalette>;
     removePaletteColor_async(id: number, colorIndex: number): Promise<ColorPalette>;
+
+    // Feature Flags
+    getFeatureFlags_async(): Promise<FeatureFlag[]>;
+    getFeatureFlag_async(name: string): Promise<FeatureFlag | undefined>;
+    createFeatureFlag_async(flag: InsertFeatureFlag): Promise<FeatureFlag>;
+    updateFeatureFlag_async(name: string, flag: UpdateFeatureFlag): Promise<FeatureFlag>;
+    isFeatureEnabled_async(name: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -335,6 +346,41 @@ export class DatabaseStorage implements IStorage {
         }
         const updatedColors = colors.filter((_, i) => i !== colorIndex);
         return await this.updatePalette_async(id, { colors: updatedColors });
+    }
+
+    // Feature Flags
+    async getFeatureFlags_async(): Promise<FeatureFlag[]> {
+        return await db.select().from(featureFlags).orderBy(featureFlags.name);
+    }
+
+    async getFeatureFlag_async(name: string): Promise<FeatureFlag | undefined> {
+        const [flag] = await db.select().from(featureFlags).where(eq(featureFlags.name, name));
+        return flag;
+    }
+
+    async createFeatureFlag_async(flag: InsertFeatureFlag): Promise<FeatureFlag> {
+        const [created] = await db
+            .insert(featureFlags)
+            .values({ ...flag, updatedAt: new Date() })
+            .returning();
+        return created;
+    }
+
+    async updateFeatureFlag_async(name: string, flag: UpdateFeatureFlag): Promise<FeatureFlag> {
+        const [updated] = await db
+            .update(featureFlags)
+            .set({ ...flag, updatedAt: new Date() })
+            .where(eq(featureFlags.name, name))
+            .returning();
+        if (!updated) {
+            throw new Error(`Feature flag ${name} not found`);
+        }
+        return updated;
+    }
+
+    async isFeatureEnabled_async(name: string): Promise<boolean> {
+        const flag = await this.getFeatureFlag_async(name);
+        return flag?.enabled === "true";
     }
 }
 
