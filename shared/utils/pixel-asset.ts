@@ -67,6 +67,20 @@ export function createDefaultAnimation(name: string): SpriteAnimation {
 }
 
 /**
+ * Create default asset content with a single "main" object
+ */
+export function createDefaultAssetContent(): PixelAssetContent {
+  const mainObject = createDefaultObject("main", 0);
+  
+  return {
+    version: 1,
+    objects: [mainObject],
+    animations: [],
+    activeObjectId: mainObject.id,
+  };
+}
+
+/**
  * Migrate legacy content format { grid: ... } to new PixelAssetContent format
  */
 export function migrateLegacyContent(legacyContent: { grid?: Record<string, string> }): PixelAssetContent {

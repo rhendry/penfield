@@ -1,6 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Project, Asset, insertAssetSchema } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { createDefaultAssetContent } from "@shared/utils/pixel-asset";
 import { Link, useRoute } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
