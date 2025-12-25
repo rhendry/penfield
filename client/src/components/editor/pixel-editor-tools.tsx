@@ -33,11 +33,20 @@ export const FILL_TOOL: Tool = {
     hotkey: "3",
 };
 
-export const PIXEL_EDITOR_TOOLS = [PEN_TOOL, ERASER_TOOL, FILL_TOOL];
+export const OBJECT_EXPLORER_TOOL: Tool = {
+    id: "object-explorer",
+    name: "Object Explorer",
+    description: "Manage objects and their properties",
+    iconType: "lucide",
+    iconName: "Layers",
+    hotkey: "4",
+};
+
+export const PIXEL_EDITOR_TOOLS = [PEN_TOOL, ERASER_TOOL, FILL_TOOL, OBJECT_EXPLORER_TOOL];
 
 /**
  * Default toolbelt for pixel editor
- * Contains Pen, Eraser, and Fill tools
+ * Contains Pen, Eraser, Fill, and Object Explorer tools
  */
 export const DEFAULT_PIXEL_TOOLBELT: ToolbeltSlot[] = [
     {
@@ -54,6 +63,11 @@ export const DEFAULT_PIXEL_TOOLBELT: ToolbeltSlot[] = [
         id: "slot-3",
         hotkey: "3",
         tool: FILL_TOOL,
+    },
+    {
+        id: "slot-4",
+        hotkey: "4",
+        tool: OBJECT_EXPLORER_TOOL,
     },
 ];
 

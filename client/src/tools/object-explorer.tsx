@@ -4,6 +4,7 @@ import { ObjectPropertiesPanel } from "@/components/editor/object-properties-pan
 import { useRenderContext } from "@/components/editor/render-context";
 import { useState, Fragment, useMemo } from "react";
 import { getObjectById } from "@shared/utils/pixel-asset";
+import type { ColorAdjustments, PixelObject } from "@shared/types/pixel-asset";
 
 /**
  * Object Explorer Tool
@@ -44,10 +45,10 @@ function ObjectExplorerToolUtilities() {
     markDirty();
   };
 
-  const handleColorAdjustmentsChange = (adjustments: typeof content.objects[0].colorAdjustments) => {
+  const handleColorAdjustmentsChange = (adjustments: ColorAdjustments) => {
     if (!selectedObject) return;
 
-    const updateObject = (obj: typeof content.objects[0]): typeof content.objects[0] => {
+    const updateObject = (obj: PixelObject): PixelObject => {
       if (obj.id === selectedObject.id) {
         return { ...obj, colorAdjustments: adjustments };
       }
