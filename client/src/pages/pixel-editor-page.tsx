@@ -22,6 +22,7 @@ import { Palette } from "@/components/utilities/palette-selector";
 import { ReactNode } from "react";
 import { RenderContextProvider } from "@/components/editor/render-context";
 import { migrateLegacyContent } from "@shared/utils/pixel-asset";
+import { getTool } from "@/tools";
 import type { PixelAssetContent } from "@shared/types/pixel-asset";
 
 function PixelEditorContent() {
@@ -187,6 +188,12 @@ function PixelEditorContent() {
 
         const toolId = selectedTool.id;
 
+        // Get utilities from PixelTool registry for tools that have them
+        if (toolId === "object-explorer") {
+            const pixelTool = getTool(toolId);
+            return pixelTool?.utilities;
+        }
+
         if (toolId === "pen") {
             return (
                 <>
@@ -309,9 +316,10 @@ function PixelEditorContent() {
     // Initialize content from asset
     const initialContent = useMemo(() => {
         if (!asset?.content) return null;
+        const content = asset.content as Record<string, unknown>;
         // Check if it's legacy format
-        if ("grid" in asset.content && !("objects" in asset.content)) {
-            return migrateLegacyContent(asset.content as { grid?: Record<string, string> });
+        if (content && typeof content === "object" && "grid" in content && !("objects" in content)) {
+            return migrateLegacyContent(content as { grid?: Record<string, string> });
         }
         return asset.content as PixelAssetContent;
     }, [asset]);
@@ -442,6 +450,15 @@ function PixelEditorContent() {
                                 onPixelsChange={handlePixelsChange}
                             />
                         </div>
+
+                        {/* Utilities Panel - right side */}
+                        <UtilitiesPanel
+                            isExpanded={utilitiesPanelExpanded}
+                            onToggle={() => setUtilitiesPanelExpanded((prev) => !prev)}
+                            selectedTool={selectedToolWithUtilities || undefined}
+                            width={utilitiesPanelWidth}
+                            onWidthChange={setUtilitiesPanelWidth}
+                        />
                     </RenderContextProvider>
                 )}
 
@@ -457,15 +474,6 @@ function PixelEditorContent() {
                     slots={quickSelectSlots}
                     onSelect={handleQuickSelectClick}
                     onRemove={removeQuickSelectSlot}
-                />
-
-                {/* Utilities Panel - right side */}
-                <UtilitiesPanel
-                    isExpanded={utilitiesPanelExpanded}
-                    onToggle={() => setUtilitiesPanelExpanded((prev) => !prev)}
-                    selectedTool={selectedToolWithUtilities || undefined}
-                    width={utilitiesPanelWidth}
-                    onWidthChange={setUtilitiesPanelWidth}
                 />
 
                 {/* Toolkit Explorer - modal */}

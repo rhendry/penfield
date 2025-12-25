@@ -17,8 +17,8 @@ export function ObjectPropertiesPanel({
 }: ObjectPropertiesPanelProps) {
   if (!selectedObject) {
     return (
-      <div className={cn("flex flex-col border rounded-lg bg-card p-4", className)}>
-        <h3 className="text-sm font-semibold mb-2">Properties</h3>
+      <div className={cn("flex flex-col", className)}>
+        <h3 className="text-sm font-semibold text-foreground mb-2">Properties</h3>
         <p className="text-sm text-muted-foreground">No object selected</p>
       </div>
     );
@@ -48,12 +48,12 @@ export function ObjectPropertiesPanel({
   };
 
   return (
-    <div className={cn("flex flex-col border rounded-lg bg-card", className)}>
-      <div className="p-3 border-b">
-        <h3 className="text-sm font-semibold">Properties</h3>
+    <div className={cn("flex flex-col", className)}>
+      <div className="mb-3">
+        <h3 className="text-sm font-semibold text-foreground">Properties</h3>
         <p className="text-xs text-muted-foreground mt-0.5">{selectedObject.name}</p>
       </div>
-      <div className="p-4 space-y-4">
+      <div className="space-y-4">
         {/* Brightness */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">

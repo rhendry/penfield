@@ -23,6 +23,15 @@ export function useToolkitExplorer({
         if (!enabled) return;
 
         const handleKeyDown = (event: KeyboardEvent) => {
+            // Don't handle if user is typing in an input/textarea
+            if (
+                event.target instanceof HTMLInputElement ||
+                event.target instanceof HTMLTextAreaElement ||
+                event.target instanceof HTMLSelectElement
+            ) {
+                return;
+            }
+
             // Space is a global hotkey - should work everywhere
             // But don't handle it if Ctrl is pressed (Ctrl+Space is for utilities panel)
             if ((event.key === " " || event.code === "Space") && !event.ctrlKey && !event.metaKey) {

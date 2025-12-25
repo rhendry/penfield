@@ -140,7 +140,7 @@ export function UtilitiesPanel({
                         exit={{ x: width }}
                         transition={{ type: "spring", stiffness: 300, damping: 30 }}
                         className={cn(
-                            "fixed right-0 top-16 bottom-0 z-40",
+                            "fixed right-0 top-20 bottom-0 z-40",
                             "flex flex-col",
                             "bg-background/95 border-l border-white/10",
                             "backdrop-blur-xl shadow-2xl",

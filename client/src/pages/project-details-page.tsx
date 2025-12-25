@@ -76,8 +76,12 @@ export default function ProjectDetailsPage() {
     });
 
     function onSubmit(values: { name: string; type: string }) {
-        // Initialize content based on type if needed, for now empty object is fine
-        createAssetMutation.mutate({ ...values, content: {} });
+        // Initialize content based on type
+        let content: object = {};
+        if (values.type === "pixel") {
+            content = createDefaultAssetContent();
+        }
+        createAssetMutation.mutate({ ...values, content });
     }
 
     if (isLoadingProject || isLoadingAssets) {

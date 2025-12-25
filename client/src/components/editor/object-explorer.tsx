@@ -238,9 +238,24 @@ export function ObjectExplorer({
               }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const newName = e.currentTarget.value.trim();
+                  if (newName && newName !== node.data.name) {
+                    handleRename({ id: node.id, name: newName });
+                  }
                   e.currentTarget.blur();
+                  // Use setTimeout to ensure blur completes before reset
+                  setTimeout(() => {
+                    node.reset();
+                  }, 0);
                 } else if (e.key === "Escape") {
-                  node.reset();
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.currentTarget.blur();
+                  setTimeout(() => {
+                    node.reset();
+                  }, 0);
                 }
               }}
               onMouseDown={(e) => e.stopPropagation()} // Prevent drag when clicking input
@@ -314,14 +329,14 @@ export function ObjectExplorer({
   }, []);
 
   return (
-    <div className={cn("flex flex-col border rounded-lg bg-card", className)}>
-      <div className="p-3 border-b flex items-center justify-between">
-        <h3 className="text-sm font-semibold">Objects</h3>
+    <div className={cn("flex flex-col", className)}>
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-foreground">Objects</h3>
         <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => handleAdd(e)} title="Add object">
           <Plus className="h-4 w-4" />
         </Button>
       </div>
-      <div ref={containerRef} className="flex-1 overflow-hidden min-h-0 pl-2" style={{ minHeight: 200 }}>
+      <div ref={containerRef} className="flex-1 overflow-hidden min-h-0 pl-2 border rounded-md" style={{ minHeight: 200 }}>
         {data.length === 0 ? (
           <div className="p-4 text-sm text-muted-foreground text-center">No objects. Click + to add one.</div>
         ) : (
