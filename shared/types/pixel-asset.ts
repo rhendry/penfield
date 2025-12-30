@@ -62,6 +62,7 @@ export interface SpriteAnimation {
   loop: boolean;
   playing: boolean;
   gridConfig?: AnimationGridConfig; // Grid configuration for sprite animations (rows, cols)
+  stickyGrid?: boolean; // If true, grid overlay shows even when using other tools
 }
 
 // Root asset structure
@@ -129,6 +130,7 @@ export const spriteAnimationSchema = z.object({
   loop: z.boolean(),
   playing: z.boolean(),
   gridConfig: animationGridConfigSchema.optional(),
+  stickyGrid: z.boolean().optional(),
 });
 
 export const pixelAssetContentSchema = z.object({

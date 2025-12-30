@@ -10,6 +10,7 @@ import type { SpriteAnimation } from "@shared/types/pixel-asset";
 // Grid config is stored here so PixelCanvas can access it
 // This is synced from the current animation's gridConfig
 let gridConfig: GridConfig = { rows: 2, cols: 2 };
+let stickyGrid: boolean = false;
 
 export const spriteAnimationTool: PixelTool = {
   id: "sprite-animation",
@@ -19,7 +20,9 @@ export const spriteAnimationTool: PixelTool = {
   iconName: "Film",
 
   onActivate: () => {
-    // Tool activation - grid config is managed in component state
+    // Tool activation - ensure default grid config is set immediately
+    // This ensures grid shows up right away before utilities component initializes
+    gridConfig = { rows: 2, cols: 2 };
   },
 
   onDeactivate: () => {
@@ -45,10 +48,24 @@ function SpriteAnimationToolUtilities() {
   const { content, setContent, markDirty } = useRenderContext();
   const [localAnimation, setLocalAnimation] = useState<SpriteAnimation | null>(null);
 
-  // Initialize from content
+  // Initialize from content - ensure grid config is set immediately
   useEffect(() => {
-    if (content.animations.length > 0 && !localAnimation) {
-      setLocalAnimation(content.animations[0]);
+    const animation = content.animations.length > 0 ? content.animations[0] : null;
+    if (animation && !localAnimation) {
+      setLocalAnimation(animation);
+      // Initialize grid config immediately
+      if (animation.gridConfig) {
+        gridConfig = animation.gridConfig;
+      } else {
+        // If no grid config, set default
+        gridConfig = { rows: 2, cols: 2 };
+      }
+      stickyGrid = animation.stickyGrid || false;
+    } else if (!animation) {
+      // No animation exists yet - ensure default grid config is set
+      // This ensures grid shows immediately when tool is activated
+      gridConfig = { rows: 2, cols: 2 };
+      stickyGrid = false;
     }
   }, [content.animations, localAnimation]);
 
@@ -63,16 +80,18 @@ function SpriteAnimationToolUtilities() {
   // Get grid config from animation, or use default
   const gridConfigFromAnimation: GridConfig = currentAnimation?.gridConfig || { rows: 2, cols: 2 };
 
-  // Sync module-level grid config when animation changes
+  // Sync module-level grid config and sticky state when animation changes
   useEffect(() => {
     gridConfig = gridConfigFromAnimation;
-  }, [gridConfigFromAnimation]);
+    stickyGrid = currentAnimation?.stickyGrid || false;
+  }, [gridConfigFromAnimation, currentAnimation?.stickyGrid]);
 
   const handleAnimationChange = useCallback((animation: SpriteAnimation) => {
     setLocalAnimation(animation);
 
-    // Update module-level grid config
+    // Update module-level grid config and sticky state
     gridConfig = animation.gridConfig || { rows: 2, cols: 2 };
+    stickyGrid = animation.stickyGrid || false;
 
     // Update content with animation
     const existingIndex = content.animations.findIndex(a => a.id === animation.id);
@@ -105,6 +124,7 @@ function SpriteAnimationToolUtilities() {
         loop: true,
         playing: false,
         gridConfig: config,
+        stickyGrid: false,
       };
       handleAnimationChange(newAnimation);
       return;
@@ -134,5 +154,10 @@ function SpriteAnimationToolUtilities() {
 // Export function to get current grid config (for PixelCanvas)
 export function getSpriteAnimationGridConfig(): GridConfig | null {
   return gridConfig;
+}
+
+// Export function to check if grid should be sticky
+export function isSpriteAnimationGridSticky(): boolean {
+  return stickyGrid;
 }
 

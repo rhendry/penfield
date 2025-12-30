@@ -1,8 +1,10 @@
-import { useState, useCallback, Fragment } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Plus, Trash2, GripVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { HotkeyTip } from "@/components/ui/hotkey-tip";
 import { cn } from "@/lib/utils";
 import type { SpriteAnimation, AnimationFrame } from "@shared/types/pixel-asset";
 import { AnimationViewer } from "./animation-viewer";
@@ -61,6 +63,7 @@ export function SpriteAnimationControls({
         loop: true,
         playing: false,
         gridConfig: gridConfig,
+        stickyGrid: false,
       };
       handleAnimationChange(newAnimation);
       return;
@@ -122,11 +125,65 @@ export function SpriteAnimationControls({
     });
   }, [localAnimation, handleAnimationChange]);
 
+  // Handle sticky grid toggle
+  const handleStickyGridChange = useCallback((sticky: boolean) => {
+    if (!localAnimation) return;
+    handleAnimationChange({
+      ...localAnimation,
+      stickyGrid: sticky,
+    });
+  }, [localAnimation, handleAnimationChange]);
+
+  // Handle 'z' hotkey for sticky toggle
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't handle if user is typing in an input
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        e.target instanceof HTMLSelectElement
+      ) {
+        return;
+      }
+
+      // Don't handle if Ctrl/Cmd is pressed (Ctrl+Z is undo)
+      if (e.ctrlKey || e.metaKey) {
+        return;
+      }
+
+      if (e.key === "z" || e.key === "Z") {
+        e.preventDefault();
+        e.stopPropagation();
+        if (localAnimation) {
+          handleStickyGridChange(!localAnimation.stickyGrid);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, { capture: true });
+    };
+  }, [localAnimation, handleStickyGridChange]);
+
   return (
     <div className={cn("flex flex-col gap-6", className)}>
       {/* Grid Configuration */}
       <div className="space-y-4">
-        <h3 className="text-sm font-semibold">Grid Configuration</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold">Grid Configuration</h3>
+          <div className="flex items-center gap-2">
+            <Label htmlFor="sticky-grid-toggle" className="text-xs cursor-pointer">
+              Sticky Grid
+            </Label>
+            <Switch
+              id="sticky-grid-toggle"
+              checked={localAnimation?.stickyGrid ?? false}
+              onCheckedChange={handleStickyGridChange}
+            />
+            <HotkeyTip keys={["Z"]} size="sm" />
+          </div>
+        </div>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="grid-rows">Rows</Label>

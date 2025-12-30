@@ -11,6 +11,7 @@ import { UndoButton } from "@/components/atoms/undo-button";
 import { RedoButton } from "@/components/atoms/redo-button";
 import { cn } from "@/lib/utils";
 import type { GridConfig } from "@/utils/frame-extraction";
+import { isSpriteAnimationGridSticky } from "@/tools";
 
 interface PixelEditorProps {
     initialContent: any;
@@ -279,20 +280,33 @@ export function PixelEditor({
         }
     }, [selectedTool, createToolContext, content, setContent, markDirty]);
 
-    // Get grid config from animation if sprite-animation tool is active
+    // Get grid config from animation if sprite-animation tool is active OR if sticky is enabled
     const gridConfig = useMemo<GridConfig | undefined>(() => {
-        if (selectedTool?.id === "sprite-animation") {
-            // Get grid config from the first animation in content
-            const animation = content.animations.length > 0 ? content.animations[0] : null;
-            return animation?.gridConfig;
+        const animation = content.animations.length > 0 ? content.animations[0] : null;
+        const isSticky = animation?.stickyGrid || false;
+        
+        // Show grid if sprite-animation tool is active OR if sticky is enabled
+        if (selectedTool?.id === "sprite-animation" || isSticky) {
+            // If animation exists and has gridConfig, use it
+            if (animation?.gridConfig) {
+                return animation.gridConfig;
+            }
+            // If tool is active but no animation exists yet, use default
+            if (selectedTool?.id === "sprite-animation") {
+                return { rows: 2, cols: 2 };
+            }
         }
         return undefined;
     }, [
         selectedTool?.id,
-        // Track gridConfig changes by stringifying it
+        content.animations.length,
+        // Track gridConfig and stickyGrid changes by stringifying them
         content.animations.length > 0 
-            ? JSON.stringify(content.animations[0]?.gridConfig)
-            : null
+            ? JSON.stringify({ 
+                gridConfig: content.animations[0]?.gridConfig,
+                stickyGrid: content.animations[0]?.stickyGrid 
+              })
+            : "no-animations"
     ]);
 
     return (

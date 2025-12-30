@@ -11,7 +11,7 @@ export { eraserTool } from "./eraser";
 export { fillTool } from "./fill";
 export { objectExplorerTool } from "./object-explorer";
 export { spriteAnimationTool } from "./sprite-animation";
-export { getSpriteAnimationGridConfig } from "./sprite-animation";
+export { getSpriteAnimationGridConfig, isSpriteAnimationGridSticky } from "./sprite-animation";
 export type { PixelTool, ToolContext, PixelDelta } from "./types";
 
 // Tool registry - maps tool IDs to tool implementations
