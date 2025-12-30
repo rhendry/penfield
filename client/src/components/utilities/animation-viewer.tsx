@@ -69,16 +69,18 @@ function renderFrameToCanvas(
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Calculate scale to fit frame in canvas
-  const scaleX = canvas.width / cellWidth;
-  const scaleY = canvas.height / cellHeight;
-  const scale = Math.min(scaleX, scaleY);
+  // Create a temporary canvas at exact cell dimensions for 1:1 pixel rendering
+  const tempCanvas = document.createElement("canvas");
+  tempCanvas.width = Math.ceil(cellWidth);
+  tempCanvas.height = Math.ceil(cellHeight);
+  const tempCtx = tempCanvas.getContext("2d");
+  if (!tempCtx) return;
 
-  // Center the frame
-  const offsetX = (canvas.width - cellWidth * scale) / 2;
-  const offsetY = (canvas.height - cellHeight * scale) / 2;
+  // Fill temp canvas with white background
+  tempCtx.fillStyle = "#ffffff";
+  tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
 
-  // Draw pixels
+  // Render pixels at 1:1 scale (no gaps possible)
   for (const [key, color] of Object.entries(framePixels)) {
     const commaIdx = key.indexOf(",");
     if (commaIdx === -1) continue;
@@ -86,15 +88,34 @@ function renderFrameToCanvas(
     const x = parseInt(key.slice(0, commaIdx), 10);
     const y = parseInt(key.slice(commaIdx + 1), 10);
 
+    // Skip pixels outside cell bounds
+    if (x < 0 || x >= cellWidth || y < 0 || y >= cellHeight) continue;
+
     const [r, g, b, a] = parseColor(color);
-    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${a / 255})`;
-    ctx.fillRect(
-      offsetX + x * scale,
-      offsetY + y * scale,
-      scale,
-      scale
-    );
+    tempCtx.fillStyle = `rgba(${r}, ${g}, ${b}, ${a / 255})`;
+    tempCtx.fillRect(x, y, 1, 1);
   }
+
+  // Calculate scale to fit frame in canvas
+  const scaleX = canvas.width / cellWidth;
+  const scaleY = canvas.height / cellHeight;
+  const scale = Math.min(scaleX, scaleY);
+
+  // Center the frame
+  const scaledWidth = cellWidth * scale;
+  const scaledHeight = cellHeight * scale;
+  const offsetX = (canvas.width - scaledWidth) / 2;
+  const offsetY = (canvas.height - scaledHeight) / 2;
+
+  // Disable image smoothing for pixel-perfect scaling
+  ctx.imageSmoothingEnabled = false;
+  
+  // Draw the scaled temp canvas to the display canvas
+  ctx.drawImage(
+    tempCanvas,
+    0, 0, tempCanvas.width, tempCanvas.height,
+    offsetX, offsetY, scaledWidth, scaledHeight
+  );
 }
 
 export function AnimationViewer({
