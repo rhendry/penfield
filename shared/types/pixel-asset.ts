@@ -46,6 +46,7 @@ export interface AnimationFrame {
   objectId?: string;  // Reference to a PixelObject (for object-based animations)
   cellIndex?: number; // Grid cell index (for grid-based animations, 0 = top-left)
   duration: number;  // Duration in milliseconds
+  ghostEverywhere?: boolean; // If true, this cell's content is shown as a ghost in all other cells
 }
 
 // Animation grid configuration
@@ -115,6 +116,7 @@ export const animationFrameSchema = z.object({
   objectId: z.string().optional(),
   cellIndex: z.number().int().min(0).optional(),
   duration: z.number().min(0),
+  ghostEverywhere: z.boolean().optional(),
 }).refine(
   (data) => data.objectId !== undefined || data.cellIndex !== undefined,
   "AnimationFrame must have either objectId or cellIndex"

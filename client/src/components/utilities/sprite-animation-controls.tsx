@@ -69,15 +69,23 @@ export function SpriteAnimationControls({
       return;
     }
 
+    // Calculate next cellIndex: 1 plus the previous frame's cellIndex (wrapping around)
+    let nextCellIndex = 0;
+    if (localAnimation.frames.length > 0) {
+      const lastFrame = localAnimation.frames[localAnimation.frames.length - 1];
+      const lastCellIndex = lastFrame.cellIndex ?? 0;
+      nextCellIndex = (lastCellIndex + 1) % totalCells;
+    }
+
     const newFrame: AnimationFrame = {
-      cellIndex: 0,
+      cellIndex: nextCellIndex,
       duration: 100,
     };
     handleAnimationChange({
       ...localAnimation,
       frames: [...localAnimation.frames, newFrame],
     });
-  }, [localAnimation, handleAnimationChange]);
+  }, [localAnimation, handleAnimationChange, totalCells]);
 
   // Handle removing frame from animation
   const handleRemoveFrame = useCallback((index: number) => {
@@ -109,6 +117,20 @@ export function SpriteAnimationControls({
     newFrames[index] = {
       ...newFrames[index],
       duration: Math.max(1, Math.floor(duration)),
+    };
+    handleAnimationChange({
+      ...localAnimation,
+      frames: newFrames,
+    });
+  }, [localAnimation, handleAnimationChange]);
+
+  // Handle updating frame ghostEverywhere toggle
+  const handleFrameGhostEverywhereChange = useCallback((index: number, ghostEverywhere: boolean) => {
+    if (!localAnimation) return;
+    const newFrames = [...localAnimation.frames];
+    newFrames[index] = {
+      ...newFrames[index],
+      ghostEverywhere,
     };
     handleAnimationChange({
       ...localAnimation,
@@ -380,14 +402,26 @@ export function SpriteAnimationControls({
                     />
                   </div>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleRemoveFrame(index)}
-                  className="h-8 w-8 flex-shrink-0"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
+                    <Label htmlFor={`frame-${index}-ghost-everywhere`} className="text-xs cursor-pointer">
+                      Ghost All
+                    </Label>
+                    <Switch
+                      id={`frame-${index}-ghost-everywhere`}
+                      checked={frame.ghostEverywhere ?? false}
+                      onCheckedChange={(checked) => handleFrameGhostEverywhereChange(index, checked)}
+                    />
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleRemoveFrame(index)}
+                    className="h-8 w-8 flex-shrink-0"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             ))}
           </div>

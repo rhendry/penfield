@@ -323,9 +323,27 @@ export function PixelEditor({
         // Show ghosting if enabled AND (tool is active OR sticky is enabled) AND we have a grid config
         if (ghostingEnabled && (selectedTool?.id === "sprite-animation" || isSticky) && gridConfig) {
             const loop = animation?.loop || false;
+            const totalCells = gridConfig.rows * gridConfig.cols;
             
             // Calculate ghost overlays for ALL cells in the grid (not just animation frames)
             const overlays = calculateGhostOverlays(gridConfig, loop);
+            
+            // Add overlays for frames with ghostEverywhere enabled
+            if (animation && animation.frames.length > 0) {
+                for (const frame of animation.frames) {
+                    if (frame.ghostEverywhere && frame.cellIndex !== undefined) {
+                        // Render this cell's content as a ghost in all other cells
+                        for (let targetCellIndex = 0; targetCellIndex < totalCells; targetCellIndex++) {
+                            if (targetCellIndex !== frame.cellIndex) {
+                                overlays.push({
+                                    targetCellIndex,
+                                    sourceCellIndex: frame.cellIndex,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
             
             if (overlays.length === 0) {
                 return null;
@@ -346,7 +364,11 @@ export function PixelEditor({
                 ghosting: content.animations[0]?.ghosting,
                 ghostingAlpha: content.animations[0]?.ghostingAlpha,
                 stickyGrid: content.animations[0]?.stickyGrid,
-                loop: content.animations[0]?.loop
+                loop: content.animations[0]?.loop,
+                frames: content.animations[0]?.frames.map(f => ({ 
+                    cellIndex: f.cellIndex, 
+                    ghostEverywhere: f.ghostEverywhere 
+                }))
               })
             : "no-animations"
     ]);
