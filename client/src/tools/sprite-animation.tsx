@@ -64,13 +64,26 @@ function SpriteAnimationToolUtilities() {
         gridConfig = { rows: 2, cols: 2 };
       }
       stickyGrid = animation.stickyGrid || false;
+      ghosting = animation.ghosting || false;
+      ghostingAlpha = animation.ghostingAlpha ?? 0.3;
     } else if (!animation) {
       // No animation exists yet - ensure default grid config is set
       // This ensures grid shows immediately when tool is activated
       gridConfig = { rows: 2, cols: 2 };
       stickyGrid = false;
+      ghosting = false;
+      ghostingAlpha = 0.3;
     }
   }, [content.animations, localAnimation]);
+
+  // Also sync ghosting state whenever currentAnimation changes (handles reload case)
+  useEffect(() => {
+    const animation = content.animations.length > 0 ? content.animations[0] : null;
+    if (animation) {
+      ghosting = animation.ghosting || false;
+      ghostingAlpha = animation.ghostingAlpha ?? 0.3;
+    }
+  }, [content.animations]);
 
   // Get active object
   const activeObject = getActiveObject(content);

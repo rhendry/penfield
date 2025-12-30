@@ -17,8 +17,8 @@ export interface UtilitiesPanelProps {
     onWidthChange?: (width: number) => void;
 }
 
-const DEFAULT_WIDTH = 320;
-const MIN_WIDTH = 200;
+const DEFAULT_WIDTH = 420;
+const MIN_WIDTH = 300;
 const MAX_WIDTH = 800;
 
 /**

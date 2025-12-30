@@ -70,7 +70,7 @@ function PixelEditorContent() {
     const [rightClickColor, setRightClickColor] = useState("#ffffff00");
     const [currentPaletteId, setCurrentPaletteId] = useState<string>("");
     const [utilitiesPanelExpanded, setUtilitiesPanelExpanded] = useState(false);
-    const [utilitiesPanelWidth, setUtilitiesPanelWidth] = useState(320);
+    const [utilitiesPanelWidth, setUtilitiesPanelWidth] = useState(420);
 
     // Load asset
     const { data: asset, isLoading } = useQuery<Asset>({

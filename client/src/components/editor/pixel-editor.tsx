@@ -318,7 +318,8 @@ export function PixelEditor({
     const ghostingConfig = useMemo(() => {
         const animation = content.animations.length > 0 ? content.animations[0] : null;
         const isSticky = animation?.stickyGrid || false;
-        const ghostingEnabled = getSpriteAnimationGhosting();
+        // Read ghosting state directly from animation data (more reliable on reload)
+        const ghostingEnabled = animation?.ghosting || false;
         
         // Show ghosting if enabled AND (tool is active OR sticky is enabled) AND we have a grid config
         if (ghostingEnabled && (selectedTool?.id === "sprite-animation" || isSticky) && gridConfig) {
@@ -352,7 +353,7 @@ export function PixelEditor({
             // Return ghosting config with all overlays
             return {
                 overlays,
-                alpha: getSpriteAnimationGhostingAlpha(),
+                alpha: animation?.ghostingAlpha ?? 0.3,
             };
         }
         return null;
