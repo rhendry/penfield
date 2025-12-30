@@ -320,14 +320,12 @@ export function PixelEditor({
         const isSticky = animation?.stickyGrid || false;
         const ghostingEnabled = getSpriteAnimationGhosting();
         
-        // Show ghosting if enabled AND (tool is active OR sticky is enabled)
-        if (ghostingEnabled && (selectedTool?.id === "sprite-animation" || isSticky)) {
-            if (!animation || animation.frames.length === 0) {
-                return null;
-            }
+        // Show ghosting if enabled AND (tool is active OR sticky is enabled) AND we have a grid config
+        if (ghostingEnabled && (selectedTool?.id === "sprite-animation" || isSticky) && gridConfig) {
+            const loop = animation?.loop || false;
             
-            // Calculate ghost overlays for all frames
-            const overlays = calculateGhostOverlays(animation.frames, animation.loop);
+            // Calculate ghost overlays for ALL cells in the grid (not just animation frames)
+            const overlays = calculateGhostOverlays(gridConfig, loop);
             
             if (overlays.length === 0) {
                 return null;
@@ -342,12 +340,13 @@ export function PixelEditor({
         return null;
     }, [
         selectedTool?.id,
+        gridConfig,
         content.animations.length > 0 
             ? JSON.stringify({ 
                 ghosting: content.animations[0]?.ghosting,
                 ghostingAlpha: content.animations[0]?.ghostingAlpha,
                 stickyGrid: content.animations[0]?.stickyGrid,
-                frames: content.animations[0]?.frames.map(f => ({ cellIndex: f.cellIndex }))
+                loop: content.animations[0]?.loop
               })
             : "no-animations"
     ]);

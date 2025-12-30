@@ -4,7 +4,7 @@ import type { PixelDelta } from "@/tools/types";
 import type { PixelAssetContent } from "@shared/types/pixel-asset";
 import { renderAssetContent } from "./rendering-utils";
 import type { GridConfig } from "@/utils/frame-extraction";
-import { extractFrameFromGrid } from "@/utils/frame-extraction";
+import { extractFrameFromGrid, getGridCellBounds } from "@/utils/frame-extraction";
 import { getActiveObject } from "@shared/utils/pixel-asset";
 
 export interface PixelCanvasProps {
@@ -884,19 +884,17 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(funct
                         return null;
                     }
                     
-                    const { rows, cols } = gridConfig;
-                    const cellWidth = maxSize / cols;
-                    const cellHeight = maxSize / rows;
-                    
                     // Render all ghost overlays
                     const ghostRects = [];
                     
                     for (const overlay of ghostingConfig.overlays) {
-                        // Get bounds of target cell (where to render the ghost)
-                        const targetRow = Math.floor(overlay.targetCellIndex / cols);
-                        const targetCol = overlay.targetCellIndex % cols;
-                        const targetCellX = -halfSize + targetCol * cellWidth;
-                        const targetCellY = -halfSize + targetRow * cellHeight;
+                        // Get bounds of target cell (where to render the ghost) using the same function as extraction
+                        const targetBounds = getGridCellBounds(
+                            gridConfig,
+                            overlay.targetCellIndex,
+                            maxSize,
+                            halfSize
+                        );
                         
                         // Extract pixels from source cell (returns relative coordinates)
                         const ghostPixels = extractFrameFromGrid(
@@ -917,8 +915,9 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(funct
                             const relY = parseInt(key.slice(commaIdx + 1), 10);
                             
                             // Convert to absolute canvas coordinates at target cell's position
-                            const absX = targetCellX + relX;
-                            const absY = targetCellY + relY;
+                            // Round to integers to avoid half-pixel alignment issues
+                            const absX = Math.round(targetBounds.minX + relX);
+                            const absY = Math.round(targetBounds.minY + relY);
                             
                             // Check if pixel is visible in current view
                             if (absX < clampedStartX || absX > clampedEndX || absY < clampedStartY || absY > clampedEndY) {
