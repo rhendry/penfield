@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { SpriteAnimation, PixelObject } from "@shared/types/pixel-asset";
 import { extractFrameFromGrid, type GridConfig } from "@/utils/frame-extraction";
+import { setSpriteAnimationFrameIndex } from "@/tools";
 
 export interface AnimationViewerProps {
   animation: SpriteAnimation;
@@ -131,6 +132,11 @@ export function AnimationViewer({
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(animation.playing);
   const frameTimeoutRef = useRef<number | null>(null);
+  
+  // Initialize frame index tracking on mount
+  useEffect(() => {
+    setSpriteAnimationFrameIndex(currentFrameIndex);
+  }, []); // Only run on mount
 
   // Calculate cell dimensions
   const cellWidth = maxSize / gridConfig.cols;
@@ -153,7 +159,10 @@ export function AnimationViewer({
     );
 
     renderFrameToCanvas(canvasRef.current, framePixels, cellWidth, cellHeight);
-  }, [activeObject, gridConfig, currentCellIndex, maxSize, halfSize, cellWidth, cellHeight]);
+    
+    // Update module-level frame index for ghosting
+    setSpriteAnimationFrameIndex(currentFrameIndex);
+  }, [activeObject, gridConfig, currentCellIndex, maxSize, halfSize, cellWidth, cellHeight, currentFrameIndex]);
 
   // Update playing state when animation changes
   useEffect(() => {
@@ -255,6 +264,40 @@ export function AnimationViewer({
       }
     };
   }, [isPlaying, currentFrameIndex, animation.frames, currentFrame, advanceFrame]);
+
+  // Handle 'c' hotkey for play/pause
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't handle if user is typing in an input
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        e.target instanceof HTMLSelectElement
+      ) {
+        return;
+      }
+
+      // Don't handle if Ctrl/Cmd is pressed
+      if (e.ctrlKey || e.metaKey) {
+        return;
+      }
+
+      if (e.key === "c" || e.key === "C") {
+        e.preventDefault();
+        e.stopPropagation();
+        if (isPlaying) {
+          pause();
+        } else {
+          play();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, { capture: true });
+    };
+  }, [isPlaying, play, pause]);
 
   if (!activeObject || animation.frames.length === 0) {
     return (

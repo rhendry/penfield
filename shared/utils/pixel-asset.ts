@@ -65,6 +65,8 @@ export function createDefaultAnimation(name: string): SpriteAnimation {
     playing: false,
     gridConfig: { rows: 2, cols: 2 },
     stickyGrid: false,
+    ghosting: false,
+    ghostingAlpha: 0.3,
   };
 }
 

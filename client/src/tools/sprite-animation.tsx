@@ -11,6 +11,9 @@ import type { SpriteAnimation } from "@shared/types/pixel-asset";
 // This is synced from the current animation's gridConfig
 let gridConfig: GridConfig = { rows: 2, cols: 2 };
 let stickyGrid: boolean = false;
+let ghosting: boolean = false;
+let ghostingAlpha: number = 0.3;
+let currentFrameIndex: number = 0;
 
 export const spriteAnimationTool: PixelTool = {
   id: "sprite-animation",
@@ -80,18 +83,22 @@ function SpriteAnimationToolUtilities() {
   // Get grid config from animation, or use default
   const gridConfigFromAnimation: GridConfig = currentAnimation?.gridConfig || { rows: 2, cols: 2 };
 
-  // Sync module-level grid config and sticky state when animation changes
+  // Sync module-level grid config, sticky state, and ghosting state when animation changes
   useEffect(() => {
     gridConfig = gridConfigFromAnimation;
     stickyGrid = currentAnimation?.stickyGrid || false;
-  }, [gridConfigFromAnimation, currentAnimation?.stickyGrid]);
+    ghosting = currentAnimation?.ghosting || false;
+    ghostingAlpha = currentAnimation?.ghostingAlpha ?? 0.3;
+  }, [gridConfigFromAnimation, currentAnimation?.stickyGrid, currentAnimation?.ghosting, currentAnimation?.ghostingAlpha]);
 
   const handleAnimationChange = useCallback((animation: SpriteAnimation) => {
     setLocalAnimation(animation);
 
-    // Update module-level grid config and sticky state
+    // Update module-level grid config, sticky state, and ghosting state
     gridConfig = animation.gridConfig || { rows: 2, cols: 2 };
     stickyGrid = animation.stickyGrid || false;
+    ghosting = animation.ghosting || false;
+    ghostingAlpha = animation.ghostingAlpha ?? 0.3;
 
     // Update content with animation
     const existingIndex = content.animations.findIndex(a => a.id === animation.id);
@@ -159,5 +166,25 @@ export function getSpriteAnimationGridConfig(): GridConfig | null {
 // Export function to check if grid should be sticky
 export function isSpriteAnimationGridSticky(): boolean {
   return stickyGrid;
+}
+
+// Export function to check if ghosting is enabled
+export function getSpriteAnimationGhosting(): boolean {
+  return ghosting;
+}
+
+// Export function to get ghosting alpha
+export function getSpriteAnimationGhostingAlpha(): number {
+  return ghostingAlpha;
+}
+
+// Export function to set current frame index (called by AnimationViewer)
+export function setSpriteAnimationFrameIndex(index: number): void {
+  currentFrameIndex = index;
+}
+
+// Export function to get current frame index
+export function getSpriteAnimationFrameIndex(): number {
+  return currentFrameIndex;
 }
 

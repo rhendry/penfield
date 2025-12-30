@@ -134,6 +134,69 @@ export function SpriteAnimationControls({
     });
   }, [localAnimation, handleAnimationChange]);
 
+  // Handle ghosting toggle
+  const handleGhostingChange = useCallback((ghosting: boolean) => {
+    if (!localAnimation) {
+      // Create a new animation with ghosting if none exists
+      const newAnimation: SpriteAnimation = {
+        id: crypto.randomUUID(),
+        name: "Animation",
+        frames: [],
+        loop: true,
+        playing: false,
+        gridConfig: gridConfig,
+        stickyGrid: false,
+        ghosting: ghosting,
+        ghostingAlpha: 0.3,
+      };
+      handleAnimationChange(newAnimation);
+      return;
+    }
+    handleAnimationChange({
+      ...localAnimation,
+      ghosting: ghosting,
+    });
+  }, [localAnimation, handleAnimationChange, gridConfig]);
+
+  // Handle ghosting alpha change
+  const handleGhostingAlphaChange = useCallback((alpha: number) => {
+    if (!localAnimation) return;
+    handleAnimationChange({
+      ...localAnimation,
+      ghostingAlpha: Math.max(0, Math.min(1, alpha)),
+    });
+  }, [localAnimation, handleAnimationChange]);
+
+  // Handle 'x' hotkey for ghosting toggle
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't handle if user is typing in an input
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        e.target instanceof HTMLSelectElement
+      ) {
+        return;
+      }
+
+      // Don't handle if Ctrl/Cmd is pressed
+      if (e.ctrlKey || e.metaKey) {
+        return;
+      }
+
+      if (e.key === "x" || e.key === "X") {
+        e.preventDefault();
+        e.stopPropagation();
+        handleGhostingChange(!(localAnimation?.ghosting ?? false));
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, { capture: true });
+    };
+  }, [localAnimation, handleGhostingChange]);
+
   // Handle 'z' hotkey for sticky toggle
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -184,6 +247,40 @@ export function SpriteAnimationControls({
             <HotkeyTip keys={["Z"]} size="sm" />
           </div>
         </div>
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold">Ghosting</h3>
+          <div className="flex items-center gap-2">
+            <Label htmlFor="ghosting-toggle" className="text-xs cursor-pointer">
+              Enable
+            </Label>
+            <Switch
+              id="ghosting-toggle"
+              checked={localAnimation?.ghosting ?? false}
+              onCheckedChange={handleGhostingChange}
+            />
+            <HotkeyTip keys={["X"]} size="sm" />
+          </div>
+        </div>
+        {localAnimation?.ghosting && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="ghosting-alpha">Alpha</Label>
+              <span className="text-xs text-muted-foreground">
+                {(localAnimation?.ghostingAlpha ?? 0.3).toFixed(2)}
+              </span>
+            </div>
+            <input
+              id="ghosting-alpha"
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value={localAnimation?.ghostingAlpha ?? 0.3}
+              onChange={(e) => handleGhostingAlphaChange(parseFloat(e.target.value))}
+              className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+            />
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="grid-rows">Rows</Label>

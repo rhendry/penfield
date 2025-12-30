@@ -17,7 +17,8 @@
     "deploy": "npm run db:migrate",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
-    "test:reorder": "tsx client/src/components/editor/object-explorer-reorder.test.ts"
+    "test:reorder": "tsx client/src/components/editor/object-explorer-reorder.test.ts",
+    "test:ghosting": "tsx client/src/utils/ghosting-logic.test.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

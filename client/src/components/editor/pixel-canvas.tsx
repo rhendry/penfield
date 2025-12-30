@@ -4,6 +4,8 @@ import type { PixelDelta } from "@/tools/types";
 import type { PixelAssetContent } from "@shared/types/pixel-asset";
 import { renderAssetContent } from "./rendering-utils";
 import type { GridConfig } from "@/utils/frame-extraction";
+import { extractFrameFromGrid } from "@/utils/frame-extraction";
+import { getActiveObject } from "@shared/utils/pixel-asset";
 
 export interface PixelCanvasProps {
     /** Maximum canvas size in pixels (width and height) */
@@ -30,6 +32,11 @@ export interface PixelCanvasProps {
     onMouseUp?: () => void;
     /** Animation grid configuration (for sprite animation tool) */
     gridConfig?: GridConfig;
+    /** Ghosting configuration (previous frames overlay) */
+    ghostingConfig?: {
+        overlays: Array<{ targetCellIndex: number; sourceCellIndex: number }>;
+        alpha: number;
+    } | null;
     /** Additional className */
     className?: string;
 }
@@ -163,6 +170,7 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(funct
     onPixelDrag,
     onMouseUp,
     gridConfig,
+    ghostingConfig,
     className,
 }, ref) {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -867,6 +875,71 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(funct
                     }
                     
                     return cells;
+                })()}
+                
+                {/* Ghosting Overlay */}
+                {ghostingConfig && gridConfig && content && (() => {
+                    const activeObject = getActiveObject(content);
+                    if (!activeObject) {
+                        return null;
+                    }
+                    
+                    const { rows, cols } = gridConfig;
+                    const cellWidth = maxSize / cols;
+                    const cellHeight = maxSize / rows;
+                    
+                    // Render all ghost overlays
+                    const ghostRects = [];
+                    
+                    for (const overlay of ghostingConfig.overlays) {
+                        // Get bounds of target cell (where to render the ghost)
+                        const targetRow = Math.floor(overlay.targetCellIndex / cols);
+                        const targetCol = overlay.targetCellIndex % cols;
+                        const targetCellX = -halfSize + targetCol * cellWidth;
+                        const targetCellY = -halfSize + targetRow * cellHeight;
+                        
+                        // Extract pixels from source cell (returns relative coordinates)
+                        const ghostPixels = extractFrameFromGrid(
+                            activeObject,
+                            gridConfig,
+                            overlay.sourceCellIndex,
+                            maxSize,
+                            halfSize
+                        );
+                        
+                        // Render ghost pixels as rectangles at target cell's position
+                        for (const [key, color] of Object.entries(ghostPixels)) {
+                            const commaIdx = key.indexOf(",");
+                            if (commaIdx === -1) continue;
+                            
+                            // These are relative coordinates (0,0 = top-left of source cell)
+                            const relX = parseInt(key.slice(0, commaIdx), 10);
+                            const relY = parseInt(key.slice(commaIdx + 1), 10);
+                            
+                            // Convert to absolute canvas coordinates at target cell's position
+                            const absX = targetCellX + relX;
+                            const absY = targetCellY + relY;
+                            
+                            // Check if pixel is visible in current view
+                            if (absX < clampedStartX || absX > clampedEndX || absY < clampedStartY || absY > clampedEndY) {
+                                continue;
+                            }
+                            
+                            ghostRects.push(
+                                <rect
+                                    key={`ghost-${overlay.targetCellIndex}-${overlay.sourceCellIndex}-${key}`}
+                                    x={absX}
+                                    y={absY}
+                                    width={1}
+                                    height={1}
+                                    fill={color}
+                                    opacity={ghostingConfig.alpha}
+                                />
+                            );
+                        }
+                    }
+                    
+                    return ghostRects;
                 })()}
             </svg>
         </div>

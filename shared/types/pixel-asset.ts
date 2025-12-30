@@ -63,6 +63,8 @@ export interface SpriteAnimation {
   playing: boolean;
   gridConfig?: AnimationGridConfig; // Grid configuration for sprite animations (rows, cols)
   stickyGrid?: boolean; // If true, grid overlay shows even when using other tools
+  ghosting?: boolean; // If true, show previous frame overlay
+  ghostingAlpha?: number; // Alpha value for ghosting overlay (0-1, default 0.3)
 }
 
 // Root asset structure
@@ -131,6 +133,8 @@ export const spriteAnimationSchema = z.object({
   playing: z.boolean(),
   gridConfig: animationGridConfigSchema.optional(),
   stickyGrid: z.boolean().optional(),
+  ghosting: z.boolean().optional(),
+  ghostingAlpha: z.number().min(0).max(1).optional(),
 });
 
 export const pixelAssetContentSchema = z.object({

@@ -11,7 +11,12 @@ import { UndoButton } from "@/components/atoms/undo-button";
 import { RedoButton } from "@/components/atoms/redo-button";
 import { cn } from "@/lib/utils";
 import type { GridConfig } from "@/utils/frame-extraction";
-import { isSpriteAnimationGridSticky } from "@/tools";
+import { 
+  isSpriteAnimationGridSticky, 
+  getSpriteAnimationGhosting, 
+  getSpriteAnimationGhostingAlpha
+} from "@/tools";
+import { calculateGhostOverlays } from "@/utils/ghosting-logic";
 
 interface PixelEditorProps {
     initialContent: any;
@@ -309,6 +314,44 @@ export function PixelEditor({
             : "no-animations"
     ]);
 
+    // Get ghosting config - show if ghosting is enabled AND (sprite-animation tool is active OR sticky is enabled)
+    const ghostingConfig = useMemo(() => {
+        const animation = content.animations.length > 0 ? content.animations[0] : null;
+        const isSticky = animation?.stickyGrid || false;
+        const ghostingEnabled = getSpriteAnimationGhosting();
+        
+        // Show ghosting if enabled AND (tool is active OR sticky is enabled)
+        if (ghostingEnabled && (selectedTool?.id === "sprite-animation" || isSticky)) {
+            if (!animation || animation.frames.length === 0) {
+                return null;
+            }
+            
+            // Calculate ghost overlays for all frames
+            const overlays = calculateGhostOverlays(animation.frames, animation.loop);
+            
+            if (overlays.length === 0) {
+                return null;
+            }
+            
+            // Return ghosting config with all overlays
+            return {
+                overlays,
+                alpha: getSpriteAnimationGhostingAlpha(),
+            };
+        }
+        return null;
+    }, [
+        selectedTool?.id,
+        content.animations.length > 0 
+            ? JSON.stringify({ 
+                ghosting: content.animations[0]?.ghosting,
+                ghostingAlpha: content.animations[0]?.ghostingAlpha,
+                stickyGrid: content.animations[0]?.stickyGrid,
+                frames: content.animations[0]?.frames.map(f => ({ cellIndex: f.cellIndex }))
+              })
+            : "no-animations"
+    ]);
+
     return (
         <div className={cn("relative w-full h-full", className)}>
             <PixelCanvas
@@ -318,6 +361,7 @@ export function PixelEditor({
                 onPixelDrag={handlePixelDrag}
                 onMouseUp={handleMouseUp}
                 gridConfig={gridConfig}
+                ghostingConfig={ghostingConfig}
                 className="w-full h-full"
             />
             {/* Undo/Redo buttons in top-right */}
