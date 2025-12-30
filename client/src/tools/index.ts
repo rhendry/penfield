@@ -10,6 +10,8 @@ export { penTool } from "./pen";
 export { eraserTool } from "./eraser";
 export { fillTool } from "./fill";
 export { objectExplorerTool } from "./object-explorer";
+export { spriteAnimationTool } from "./sprite-animation";
+export { getSpriteAnimationGridConfig } from "./sprite-animation";
 export type { PixelTool, ToolContext, PixelDelta } from "./types";
 
 // Tool registry - maps tool IDs to tool implementations
@@ -17,6 +19,7 @@ import { penTool } from "./pen";
 import { eraserTool } from "./eraser";
 import { fillTool } from "./fill";
 import { objectExplorerTool } from "./object-explorer";
+import { spriteAnimationTool } from "./sprite-animation";
 import { PixelTool } from "./types";
 
 export const toolRegistry: Record<string, PixelTool> = {
@@ -24,6 +27,7 @@ export const toolRegistry: Record<string, PixelTool> = {
     [eraserTool.id]: eraserTool,
     [fillTool.id]: fillTool,
     [objectExplorerTool.id]: objectExplorerTool,
+    [spriteAnimationTool.id]: spriteAnimationTool,
 };
 
 /**

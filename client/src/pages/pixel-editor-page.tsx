@@ -240,6 +240,11 @@ function PixelEditorContent() {
             return pixelTool?.utilities;
         }
 
+        if (toolId === "sprite-animation") {
+            const pixelTool = getTool(toolId);
+            return pixelTool?.utilities;
+        }
+
         if (toolId === "pen") {
             return (
                 <>

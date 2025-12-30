@@ -42,11 +42,19 @@ export const OBJECT_EXPLORER_TOOL: Tool = {
     hotkey: "4",
 };
 
-export const PIXEL_EDITOR_TOOLS = [PEN_TOOL, ERASER_TOOL, FILL_TOOL, OBJECT_EXPLORER_TOOL];
+export const SPRITE_ANIMATION_TOOL: Tool = {
+    id: "sprite-animation",
+    name: "Sprite Animation",
+    description: "Create sprite animations using a grid overlay",
+    iconType: "lucide",
+    iconName: "Film",
+};
+
+export const PIXEL_EDITOR_TOOLS = [PEN_TOOL, ERASER_TOOL, FILL_TOOL, OBJECT_EXPLORER_TOOL, SPRITE_ANIMATION_TOOL];
 
 /**
  * Default toolbelt for pixel editor
- * Contains Pen, Eraser, Fill, and Object Explorer tools
+ * Contains Pen, Eraser, Fill, Object Explorer, and Sprite Animation tools
  */
 export const DEFAULT_PIXEL_TOOLBELT: ToolbeltSlot[] = [
     {
@@ -66,8 +74,13 @@ export const DEFAULT_PIXEL_TOOLBELT: ToolbeltSlot[] = [
     },
     {
         id: "slot-4",
-        hotkey: "4",
+        hotkey: "a",
         tool: OBJECT_EXPLORER_TOOL,
+    },
+    {
+        id: "slot-5",
+        hotkey: "4",
+        tool: SPRITE_ANIMATION_TOOL,
     },
 ];
 

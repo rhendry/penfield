@@ -63,6 +63,7 @@ export function createDefaultAnimation(name: string): SpriteAnimation {
     frames: [],
     loop: true,
     playing: false,
+    gridConfig: { rows: 2, cols: 2 },
   };
 }
 

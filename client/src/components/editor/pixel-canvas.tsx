@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import type { PixelDelta } from "@/tools/types";
 import type { PixelAssetContent } from "@shared/types/pixel-asset";
 import { renderAssetContent } from "./rendering-utils";
+import type { GridConfig } from "@/utils/frame-extraction";
 
 export interface PixelCanvasProps {
     /** Maximum canvas size in pixels (width and height) */
@@ -27,6 +28,8 @@ export interface PixelCanvasProps {
     onPixelDrag?: (x: number, y: number, button: "left" | "right") => void;
     /** Callback when mouse is released */
     onMouseUp?: () => void;
+    /** Animation grid configuration (for sprite animation tool) */
+    gridConfig?: GridConfig;
     /** Additional className */
     className?: string;
 }
@@ -159,6 +162,7 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(funct
     onPixelClick,
     onPixelDrag,
     onMouseUp,
+    gridConfig,
     className,
 }, ref) {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -802,6 +806,68 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(funct
                         />
                     );
                 })}
+                
+                {/* Animation Grid Overlay */}
+                {gridConfig && (() => {
+                    const { rows, cols } = gridConfig;
+                    const cellWidth = maxSize / cols;
+                    const cellHeight = maxSize / rows;
+                    
+                    // Calculate visible cells
+                    const startCol = Math.max(0, Math.floor((clampedStartX + halfSize) / cellWidth));
+                    const endCol = Math.min(cols - 1, Math.floor((clampedEndX + halfSize) / cellWidth));
+                    const startRow = Math.max(0, Math.floor((clampedStartY + halfSize) / cellHeight));
+                    const endRow = Math.min(rows - 1, Math.floor((clampedEndY + halfSize) / cellHeight));
+                    
+                    const cells = [];
+                    
+                    // Draw cell borders and frame numbers
+                    for (let row = startRow; row <= endRow; row++) {
+                        for (let col = startCol; col <= endCol; col++) {
+                            const cellIndex = row * cols + col;
+                            const cellX = -halfSize + col * cellWidth;
+                            const cellY = -halfSize + row * cellHeight;
+                            
+                            // Cell border
+                            cells.push(
+                                <rect
+                                    key={`cell-${cellIndex}`}
+                                    x={cellX}
+                                    y={cellY}
+                                    width={cellWidth}
+                                    height={cellHeight}
+                                    fill="none"
+                                    stroke="#3b82f6"
+                                    strokeWidth={0.02}
+                                    opacity={0.5}
+                                />
+                            );
+                            
+                            // Frame number (centered in cell)
+                            const textX = cellX + cellWidth / 2;
+                            const textY = cellY + cellHeight / 2;
+                            const fontSize = Math.min(cellWidth, cellHeight) * 0.3;
+                            
+                            cells.push(
+                                <text
+                                    key={`text-${cellIndex}`}
+                                    x={textX}
+                                    y={textY}
+                                    fontSize={fontSize}
+                                    fill="#3b82f6"
+                                    textAnchor="middle"
+                                    dominantBaseline="middle"
+                                    opacity={0.7}
+                                    fontWeight="bold"
+                                >
+                                    {cellIndex}
+                                </text>
+                            );
+                        }
+                    }
+                    
+                    return cells;
+                })()}
             </svg>
         </div>
     );

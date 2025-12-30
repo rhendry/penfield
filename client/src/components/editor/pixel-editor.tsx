@@ -1,4 +1,4 @@
-import { useCallback, useRef, useEffect } from "react";
+import { useCallback, useRef, useEffect, useMemo } from "react";
 import { PixelCanvas, PixelCanvasHandle } from "./pixel-canvas";
 import { Tool } from "@/components/toolbelt/types";
 import { getTool, ToolContext } from "@/tools";
@@ -10,6 +10,7 @@ import { createPixelChangeAction } from "@/utils/undo-redo-actions";
 import { UndoButton } from "@/components/atoms/undo-button";
 import { RedoButton } from "@/components/atoms/redo-button";
 import { cn } from "@/lib/utils";
+import type { GridConfig } from "@/utils/frame-extraction";
 
 interface PixelEditorProps {
     initialContent: any;
@@ -278,6 +279,22 @@ export function PixelEditor({
         }
     }, [selectedTool, createToolContext, content, setContent, markDirty]);
 
+    // Get grid config from animation if sprite-animation tool is active
+    const gridConfig = useMemo<GridConfig | undefined>(() => {
+        if (selectedTool?.id === "sprite-animation") {
+            // Get grid config from the first animation in content
+            const animation = content.animations.length > 0 ? content.animations[0] : null;
+            return animation?.gridConfig;
+        }
+        return undefined;
+    }, [
+        selectedTool?.id,
+        // Track gridConfig changes by stringifying it
+        content.animations.length > 0 
+            ? JSON.stringify(content.animations[0]?.gridConfig)
+            : null
+    ]);
+
     return (
         <div className={cn("relative w-full h-full", className)}>
             <PixelCanvas
@@ -286,6 +303,7 @@ export function PixelEditor({
                 onPixelClick={handlePixelClick}
                 onPixelDrag={handlePixelDrag}
                 onMouseUp={handleMouseUp}
+                gridConfig={gridConfig}
                 className="w-full h-full"
             />
             {/* Undo/Redo buttons in top-right */}

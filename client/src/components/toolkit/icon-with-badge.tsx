@@ -1,4 +1,4 @@
-import { LucideIcon, Pencil, Eraser, PaintBucket, Layers } from "lucide-react";
+import { LucideIcon, Pencil, Eraser, PaintBucket, Layers, Film } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
 
@@ -17,6 +17,7 @@ registerLucideIcon("Pencil", Pencil);
 registerLucideIcon("Eraser", Eraser);
 registerLucideIcon("PaintBucket", PaintBucket);
 registerLucideIcon("Layers", Layers);
+registerLucideIcon("Film", Film);
 
 /**
  * Register multiple Lucide icons at once.

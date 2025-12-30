@@ -43,8 +43,15 @@ export interface PixelObject {
 
 // Animation frame
 export interface AnimationFrame {
-  objectId: string;  // Reference to a PixelObject
+  objectId?: string;  // Reference to a PixelObject (for object-based animations)
+  cellIndex?: number; // Grid cell index (for grid-based animations, 0 = top-left)
   duration: number;  // Duration in milliseconds
+}
+
+// Animation grid configuration
+export interface AnimationGridConfig {
+  rows: number;
+  cols: number;
 }
 
 // Animation
@@ -54,6 +61,7 @@ export interface SpriteAnimation {
   frames: AnimationFrame[];
   loop: boolean;
   playing: boolean;
+  gridConfig?: AnimationGridConfig; // Grid configuration for sprite animations (rows, cols)
 }
 
 // Root asset structure
@@ -101,8 +109,17 @@ export const pixelObjectSchema: z.ZodType<PixelObject> = z.lazy(() => z.object({
 }));
 
 export const animationFrameSchema = z.object({
-  objectId: z.string(),
+  objectId: z.string().optional(),
+  cellIndex: z.number().int().min(0).optional(),
   duration: z.number().min(0),
+}).refine(
+  (data) => data.objectId !== undefined || data.cellIndex !== undefined,
+  "AnimationFrame must have either objectId or cellIndex"
+);
+
+export const animationGridConfigSchema = z.object({
+  rows: z.number().int().min(1).max(32),
+  cols: z.number().int().min(1).max(32),
 });
 
 export const spriteAnimationSchema = z.object({
@@ -111,6 +128,7 @@ export const spriteAnimationSchema = z.object({
   frames: z.array(animationFrameSchema),
   loop: z.boolean(),
   playing: z.boolean(),
+  gridConfig: animationGridConfigSchema.optional(),
 });
 
 export const pixelAssetContentSchema = z.object({
