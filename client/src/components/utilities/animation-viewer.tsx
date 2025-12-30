@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Play, Pause, SkipBack, SkipForward, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { HotkeyTip } from "@/components/ui/hotkey-tip";
 import { cn } from "@/lib/utils";
 import type { SpriteAnimation, PixelObject } from "@shared/types/pixel-asset";
 import { extractFrameFromGrid, type GridConfig } from "@/utils/frame-extraction";
@@ -344,18 +345,21 @@ export function AnimationViewer({
         >
           <SkipBack className="h-4 w-4" />
         </Button>
-        <Button
-          variant="default"
-          size="icon"
-          onClick={isPlaying ? pause : play}
-          title={isPlaying ? "Pause" : "Play"}
-        >
-          {isPlaying ? (
-            <Pause className="h-4 w-4" />
-          ) : (
-            <Play className="h-4 w-4" />
-          )}
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="default"
+            size="icon"
+            onClick={isPlaying ? pause : play}
+            title={isPlaying ? "Pause" : "Play"}
+          >
+            {isPlaying ? (
+              <Pause className="h-4 w-4" />
+            ) : (
+              <Play className="h-4 w-4" />
+            )}
+          </Button>
+          <HotkeyTip keys={["C"]} size="sm" />
+        </div>
         <Button
           variant="outline"
           size="icon"
